@@ -1,0 +1,158 @@
+# CI/CD for TripMate AI
+#
+#   checks       type-check frontend + Edge Functions (Deno), unit tests, production build
+#   integration  full local Supabase stack + mock LLM, end-to-end API tests
+#   deploy       main only, after both pass: database migrations + Edge Functions to Supabase
+#
+# The frontend is deployed by Vercel's Git integration (a preview for every PR,
+# production for main), so it is not deployed here.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22
+  SUPABASE_CLI_VERSION: 2.122.0
+
+jobs:
+  checks:
+    name: Type-check, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check frontend
+        run: npm run typecheck
+
+      - name: Type-check Edge Functions (Deno)
+        run: npm run typecheck:functions
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npx vite build
+
+  integration:
+    name: End-to-end API tests
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Start local Supabase (database, auth, REST)
+        run: supabase start -x studio,imgproxy,mailpit,realtime,storage-api,postgres-meta,logflare,vector,supavisor
+
+      - name: Export local API keys
+        run: |
+          supabase status -o env | grep -E '^(API_URL|ANON_KEY)=' | sed 's/"//g' >> "$GITHUB_ENV"
+
+      - name: Start mock LLM
+        run: |
+          npm run mock-llm > mock-llm.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8787/calls && exit 0; sleep 1; done
+          cat mock-llm.log; exit 1
+
+      - name: Serve Edge Functions
+        run: |
+          cat > functions.env <<'EOF'
+          LLM_API_KEY=mock-llm-key
+          LLM_BASE_URL=http://host.docker.internal:8787/v1
+          AI_RATE_LIMIT_PER_HOUR=8
+          EOF
+          supabase functions serve --env-file functions.env > functions.log 2>&1 &
+          # Ready when the trips function answers (401 without a token).
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$API_URL/functions/v1/trips" -H "apikey: $ANON_KEY" || true)
+            [ "$code" = "401" ] && exit 0
+            sleep 2
+          done
+          cat functions.log; exit 1
+
+      - name: Integration tests
+        env:
+          AI_RATE_LIMIT_PER_HOUR: 8
+        run: SUPABASE_URL="$API_URL" SUPABASE_ANON_KEY="$ANON_KEY" npm run test:integration
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          echo "::group::Edge Functions"; cat functions.log || true; echo "::endgroup::"
+          echo "::group::Mock LLM"; cat mock-llm.log || true; echo "::endgroup::"
+
+  deploy:
+    name: Deploy backend to Supabase
+    needs: [checks, integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Check deploy secrets
+        id: secrets
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_DB_PASSWORD" ] || [ -z "$SUPABASE_PROJECT_REF" ]; then
+            echo "::notice::Deploy skipped: set SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD and SUPABASE_PROJECT_REF in the production environment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.ready == 'true'
+
+      - uses: supabase/setup-cli@v1
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Link project
+        if: steps.secrets.outputs.ready == 'true'
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Apply database migrations
+        if: steps.secrets.outputs.ready == 'true'
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Deploy Edge Functions
+        if: steps.secrets.outputs.ready == 'true'
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
