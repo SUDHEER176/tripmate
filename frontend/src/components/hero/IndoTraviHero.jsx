@@ -15,7 +15,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useSmoothScroll } from "@/context/SmoothScrollContext";
 import { TripMateLogo } from "@/components/brand/TripMateLogo";
 import { destinations } from "@/lib/destinations";
-import userHeroVideo from "../../../45569-443244046_medium.mp4";
+import userHeroVideo from "@/assets/videos/45569-443244046_medium.mp4";
 
 const ease = [0.22, 1, 0.36, 1];
 

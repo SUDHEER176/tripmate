@@ -32,3 +32,8 @@ dist-ssr
 supabase/.branches
 supabase/.temp
 supabase/functions/.env
+**/supabase/.branches
+**/supabase/.temp
+**/supabase/functions/.env
+.temp/
+**/.temp/

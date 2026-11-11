@@ -1,15 +1,12 @@
 {
-  "name": "tripmate-ai",
+  "name": "tripmate-ai-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "test": "node --test tests/backend/*.test.js",
-    "test:integration": "node --test tests/integration/*.test.js",
-    "mock-llm": "node tests/integration/mock-llm-server.js"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",

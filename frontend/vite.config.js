@@ -10,4 +10,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    fs: {
+      // The budget and route-optimizer code is shared with the backend
+      // (backend/supabase/functions/_shared), which sits outside this folder.
+      allow: [path.resolve(__dirname, "..")],
+    },
+  },
 });
