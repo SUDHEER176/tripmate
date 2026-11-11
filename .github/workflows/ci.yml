@@ -24,7 +24,7 @@ permissions:
 
 env:
   NODE_VERSION: 22
-  SUPABASE_CLI_VERSION: 2.122.0
+  SUPABASE_CLI_VERSION: 3.1.0
 
 jobs:
   checks:
@@ -71,6 +71,9 @@ jobs:
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +84,6 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - run: npm ci
-        working-directory: backend
 
       - uses: supabase/setup-cli@v1
         with:
@@ -134,6 +136,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
+    defaults:
+      run:
+        working-directory: backend
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -166,7 +171,7 @@ jobs:
 
       - name: Apply database migrations
         if: steps.secrets.outputs.ready == 'true'
-        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+        run: supabase db push --remote --password "$SUPABASE_DB_PASSWORD"
 
       - name: Deploy Edge Functions
         if: steps.secrets.outputs.ready == 'true'

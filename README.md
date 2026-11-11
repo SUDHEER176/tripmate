@@ -1,6 +1,6 @@
 # TripMate AI
 
-[![CI](https://github.com/YOUR_GITHUB_USER/YOUR_REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_USER/YOUR_REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/SUDHEER176/tripmate/actions/workflows/ci.yml/badge.svg)](https://github.com/SUDHEER176/tripmate/actions/workflows/ci.yml)
 
 **An AI travel planner.** Tell it where you're going, for how long and what you enjoy, and it builds a day-by-day itinerary with a budget and a map. You can then edit the plan yourself or just ask the AI assistant to change it.
 
@@ -53,11 +53,23 @@
 
 ---
 
+## Project structure
+
+```
+frontend/   React app (Vite): src/, public/, index.html, vite.config.js
+backend/    Supabase: Edge Functions, database migrations, config, and the backend tests
+```
+
+The backend runs on Supabase, not on your machine, so `backend/` has no `start` script. The frontend reuses the budget and route-optimizer code from `backend/supabase/functions/_shared/`.
+
+---
+
 ## Quick start (2 minutes)
 
 You don't need any accounts or API keys to try it. Without Supabase credentials the app runs in **local demo mode** and stores everything in your browser.
 
 ```bash
+cd frontend
 npm install
 npm run dev
 ```
@@ -73,6 +85,7 @@ Do this when you want real accounts, cloud storage and the AI features.
 ### 1. Add your environment variables
 
 ```bash
+cd frontend
 cp .env.example .env.local
 ```
 
@@ -88,13 +101,16 @@ VITE_GOOGLE_MAPS_API_KEY=your-google-maps-key
 
 ### 2. Create the database
 
-The schema lives in `supabase/migrations/`. Migrations are idempotent, so they are safe to run on a database where the old `schema.sql` was already applied.
+Run these from `backend/`. The schema lives in `backend/supabase/migrations/`. Migrations are idempotent, so they are safe to run on a database where the old `schema.sql` was already applied.
 
 ```bash
+cd backend
 npx supabase login
 npx supabase link --project-ref <your-project-ref>
-npx supabase db push
+npx supabase db push --remote
 ```
+
+If `db push` fails with `ECONNRESET`, your network may be blocking the database connection. Try another network, or paste each migration file into the dashboard's SQL Editor in order.
 
 | Migration | What it adds |
 |---|---|
@@ -106,9 +122,7 @@ npx supabase db push
 ```bash
 npx supabase secrets set LLM_API_KEY=your-api-key     # OPENAI_API_KEY also works
 
-npx supabase functions deploy generate-itinerary
-npx supabase functions deploy trips
-npx supabase functions deploy trip-assistant
+npx supabase functions deploy --use-api    # deploys all three functions
 ```
 
 Optional server settings:
@@ -149,7 +163,7 @@ Without a Routes API key it falls back to a distance-based estimate.
 
 - **Every cost lives in one table, `trip_expenses`.** Each priced activity owns exactly one linked expense, kept in sync by a database trigger, so nothing is counted twice.
 - Each expense has a `cost_basis` that says how it scales: `total`, `per_person`, `per_night`, `per_person_per_night`, `per_day` or `per_person_per_day`.
-- The calculation lives in `supabase/functions/_shared/budget.js` and is **shared by the backend and the frontend**, so both always show the same totals.
+- The calculation lives in `backend/supabase/functions/_shared/budget.js` and is **shared by the backend and the frontend**, so both always show the same totals.
 
 ### Security
 
@@ -197,6 +211,8 @@ To regenerate an existing trip, send `{ trip_id, confirm_regenerate: true }`.
 Cover budget math, input validation, AI output checks, LLM error handling and route optimization.
 
 ```bash
+cd backend
+npm install
 npm test
 ```
 
@@ -205,6 +221,7 @@ npm test
 These run against a local Supabase stack with a fake LLM, so no real API key is used. **Docker is required.**
 
 ```bash
+# Run from backend/
 # 1. Start local Supabase
 npx supabase start
 
@@ -227,6 +244,7 @@ npm run test:integration
 ### Production build
 
 ```bash
+cd frontend
 npm run build
 ```
 
@@ -242,7 +260,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request.
 | **integration** | Starts local Supabase and the mock LLM in the runner, serves the Edge Functions, runs the end-to-end tests |
 | **deploy** | Only on `main`, and only after both jobs pass: runs `supabase db push` and `supabase functions deploy` |
 
-- **Frontend:** deployed by Vercel's Git integration, with a preview URL for every pull request and production on `main`.
+- **Frontend:** deployed by Vercel's Git integration, with a preview URL for every pull request and production on `main`. In Vercel, set **Root Directory** to `frontend`.
 - **Dependencies:** Dependabot opens weekly update PRs for npm packages and GitHub Actions.
 
 ### Enabling the backend deploy

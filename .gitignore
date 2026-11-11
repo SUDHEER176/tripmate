@@ -29,9 +29,6 @@ dist-ssr
 *.sw?
 
 # Supabase local state and function secrets
-supabase/.branches
-supabase/.temp
-supabase/functions/.env
 **/supabase/.branches
 **/supabase/.temp
 **/supabase/functions/.env
