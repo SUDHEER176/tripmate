@@ -1,6 +1,6 @@
 # CI/CD for TripMate AI
 #
-#   checks       type-check frontend + Edge Functions (Deno), unit tests, production build
+#   checks       Edge Functions load check (Deno), unit tests, production build
 #   integration  full local Supabase stack + mock LLM, end-to-end API tests
 #   deploy       main only, after both pass: database migrations + Edge Functions to Supabase
 #
@@ -28,7 +28,7 @@ env:
 
 jobs:
   checks:
-    name: Type-check, unit tests, build
+    name: Unit tests, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -41,11 +41,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Type-check frontend
-        run: npm run typecheck
-
-      - name: Type-check Edge Functions (Deno)
-        run: npm run typecheck:functions
+      - name: Check Edge Functions load (Deno)
+        run: npx -y deno@2.1.4 check supabase/functions/generate-itinerary/index.js supabase/functions/trips/index.js supabase/functions/trip-assistant/index.js
 
       - name: Unit tests
         run: npm test

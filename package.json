@@ -5,13 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p .",
-    "typecheck:functions": "npx -y deno@2.1.4 check supabase/functions/generate-itinerary/index.ts supabase/functions/trips/index.ts supabase/functions/trip-assistant/index.ts",
-    "test": "node --experimental-strip-types --no-warnings --test tests/backend/*.test.ts",
-    "test:integration": "node --experimental-strip-types --no-warnings --test tests/integration/*.test.ts",
-    "mock-llm": "node --experimental-strip-types --no-warnings tests/integration/mock-llm-server.ts"
+    "test": "node --test tests/backend/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js",
+    "mock-llm": "node tests/integration/mock-llm-server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
@@ -36,7 +34,6 @@
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.0.4",
     "tailwindcss": "^4.1.14",
-    "typescript": "~5.9.3",
     "vite": "^7.1.9"
   },
   "engines": {
