@@ -167,5 +167,6 @@ npm run build                  # production build
 | **Trip Planner** | `/plan-trip` | Authenticated | Enter destination, dates, budget & preferences |
 | **Trip Details** | `/trips/:id` | Authenticated | View day-by-day plan, edit stops, map & budget |
 | **My Trips** | `/my-trips` | Authenticated | Manage all saved travel plans |
-#   t r i p m a t e  
+#   t r i p m a t e 
+ 
  
