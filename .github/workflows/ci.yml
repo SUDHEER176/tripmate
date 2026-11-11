@@ -41,8 +41,12 @@ jobs:
 
       - run: npm ci
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
+
       - name: Check Edge Functions load (Deno)
-        run: npx -y deno@2.1.4 check supabase/functions/generate-itinerary/index.js supabase/functions/trips/index.js supabase/functions/trip-assistant/index.js
+        run: deno check supabase/functions/generate-itinerary/index.js supabase/functions/trips/index.js supabase/functions/trip-assistant/index.js
 
       - name: Unit tests
         run: npm test
