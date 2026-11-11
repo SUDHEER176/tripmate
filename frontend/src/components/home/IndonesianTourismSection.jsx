@@ -36,16 +36,16 @@ function DestinationCard({ dest, theme, large = false }) {
             : `${dest.name}, ${dest.country}`
         }
         loading="lazy"
-        className="absolute inset-0 h-full w-full object-cover transition-transform duration-[1.2s] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
+        className="absolute inset-0 h-full w-full object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
 
-      <span className="absolute right-4 top-4 flex h-10 w-10 translate-y-1 items-center justify-center rounded-full bg-white text-neutral-950 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+      <span className="absolute right-4 top-4 flex h-10 w-10 translate-y-1 items-center justify-center rounded-full bg-white text-neutral-950 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
         <ArrowUpRight className="h-4 w-4" />
       </span>
 
       <div className={cn("relative", large ? "p-7 sm:p-8" : "p-5")}>
-        <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
+        <p className="text-sm text-white/75">
           {dest.country}
           {highlight && theme !== "all" && (
             <span className="text-white"> · {HIGHLIGHT_LABELS[theme]}</span>
@@ -79,7 +79,7 @@ function DestinationCard({ dest, theme, large = false }) {
       </div>
 
       {highlight?.credit && (
-        <span className="absolute bottom-1.5 right-3 text-[9px] text-white/55">
+        <span className="absolute bottom-1.5 right-3 text-[11px] text-white/70">
           Photo: {highlight.credit}
         </span>
       )}
@@ -135,7 +135,7 @@ export function IndonesianTourismSection() {
                 <motion.span
                   layoutId="destination-filter"
                   className="absolute inset-x-0 -bottom-px h-0.5 bg-neutral-950"
-                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
                 />
               )}
             </button>

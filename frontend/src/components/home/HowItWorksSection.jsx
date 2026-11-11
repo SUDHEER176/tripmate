@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
 import yellowTravelerImg from "@/assets/images/traveler-yellow-raincoat.jpg";
 import { cn } from "@/lib/utils";
-import { Reveal, SectionHeading } from "./shared";
+import { Reveal, RouteStops, SectionHeading } from "./shared";
 
 const STEP_MS = 6000;
 
@@ -28,13 +28,16 @@ const steps = [
     image:
       "https://images.unsplash.com/photo-1585208798174-6cedd86e019a?auto=format&fit=crop&w=1400&q=80",
     preview: (
-      <div className="space-y-2.5 text-sm">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-          Day 2 · Alfama
-        </p>
-        <Stop time="09:30" name="Castelo de São Jorge" />
-        <Stop time="12:30" name="Lunch at Taberna da Rua" />
-        <Stop time="16:00" name="Tram 28 to Graça" />
+      <div className="text-sm">
+        <p className="text-xs font-medium text-neutral-500">Day 2 · Alfama</p>
+        <RouteStops
+          className="mt-3"
+          stops={[
+            { time: "09:30", name: "Castelo de São Jorge" },
+            { time: "12:30", name: "Lunch at Taberna da Rua" },
+            { time: "16:00", name: "Tram 28 to Graça" },
+          ]}
+        />
       </div>
     ),
   },
@@ -81,18 +84,6 @@ function Row({ label, value }) {
     <div className="flex items-center justify-between border-b border-neutral-100 pb-2 last:border-0 last:pb-0">
       <span className="text-neutral-500">{label}</span>
       <span className="font-medium">{value}</span>
-    </div>
-  );
-}
-
-function Stop({ time, name }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-11 shrink-0 tabular-nums text-neutral-400">
-        {time}
-      </span>
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-950" />
-      <span className="truncate font-medium">{name}</span>
     </div>
   );
 }
@@ -217,7 +208,7 @@ export function HowItWorksSection() {
                           </span>
                           <span
                             className={cn(
-                              "grid transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                              "grid transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                               isActive
                                 ? "mt-2 grid-rows-[1fr] opacity-100"
                                 : "grid-rows-[0fr] opacity-0",

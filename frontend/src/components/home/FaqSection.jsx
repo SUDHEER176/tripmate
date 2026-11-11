@@ -41,7 +41,7 @@ export function FaqSection() {
     >
       <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[1fr_1.4fr] lg:gap-20">
         <Reveal>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">
+          <p className="text-sm font-medium text-neutral-500">
             Questions
           </p>
           <h2 className="mt-3 font-display text-4xl leading-[1.05] tracking-tight text-neutral-950 sm:text-5xl">
@@ -84,7 +84,7 @@ export function FaqSection() {
                     </span>
                     <span
                       className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all duration-300",
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-[transform,background-color,border-color,color] duration-200",
                         isOpen
                           ? "rotate-45 border-neutral-950 bg-neutral-950 text-white"
                           : "border-neutral-300 text-neutral-600",
@@ -96,7 +96,7 @@ export function FaqSection() {
                   <div
                     id={`faq-${idx}`}
                     className={cn(
-                      "grid transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      "grid transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                       isOpen
                         ? "grid-rows-[1fr] opacity-100"
                         : "grid-rows-[0fr] opacity-0",

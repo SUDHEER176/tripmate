@@ -242,7 +242,7 @@ function StopRow({ place, index, added, active, onHover }) {
           loading="lazy"
           className="h-14 w-14 rounded-xl object-cover"
         />
-        <span className="absolute -left-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-neutral-950 text-[10px] font-bold text-white">
+        <span className="absolute -left-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-neutral-950 text-[11px] font-medium text-white">
           {index + 1}
         </span>
       </div>
@@ -252,7 +252,7 @@ function StopRow({ place, index, added, active, onHover }) {
             {place.name}
           </span>
           {added && (
-            <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700">
+            <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-px text-[11px] font-medium text-emerald-700">
               Added
             </span>
           )}
@@ -320,7 +320,7 @@ export function ProductPreviewSection() {
               <div>
                 <div className="flex items-end justify-between gap-4 border-b border-neutral-100 pb-4">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                    <p className="text-xs font-medium text-neutral-500">
                       Day 2 · Thu, 14 Nov
                     </p>
                     <p className="mt-1 font-display text-2xl tracking-tight text-neutral-950">
@@ -411,7 +411,7 @@ export function ProductPreviewSection() {
                   </div>
                 </div>
 
-                <div className="relative overflow-hidden rounded-2xl border border-neutral-100 bg-stone-100 [&_.leaflet-container]:rounded-none [&_.trip-map]:rounded-none [&_.leaflet-control-attribution]:text-[9px]">
+                <div className="relative overflow-hidden rounded-2xl border border-neutral-100 bg-stone-100 [&_.leaflet-container]:rounded-none [&_.trip-map]:rounded-none [&_.leaflet-control-attribution]:text-[11px]">
                   <TripMap
                     lat={35.0}
                     lng={135.78}
@@ -451,7 +451,7 @@ export function ProductPreviewSection() {
                     onMouseEnter={() => isAdded && setHovered(place.id)}
                     onMouseLeave={() => setHovered(null)}
                     className={cn(
-                      "group overflow-hidden rounded-3xl border bg-white transition-all duration-300",
+                      "group overflow-hidden rounded-3xl border bg-white transition-[border-color,box-shadow] duration-200",
                       isAdded
                         ? "border-neutral-950"
                         : "border-neutral-200 hover:border-neutral-300 hover:shadow-lg hover:shadow-neutral-950/5",
@@ -462,7 +462,7 @@ export function ProductPreviewSection() {
                         src={place.image}
                         alt={place.name}
                         loading="lazy"
-                        className="h-full w-full object-cover transition-transform duration-[1.2s] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
+                        className="h-full w-full object-cover"
                       />
                       <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-medium text-neutral-700 backdrop-blur">
                         {distanceFromRoute(place)}

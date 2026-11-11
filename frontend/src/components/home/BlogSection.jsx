@@ -47,7 +47,7 @@ export function BlogSection() {
                     src={post.image}
                     alt=""
                     loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-[1.2s] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
+                    className="h-full w-full object-cover"
                   />
                 </div>
                 <div className="mt-6 flex items-center gap-3 text-xs text-neutral-500">
@@ -62,7 +62,7 @@ export function BlogSection() {
                   <span className="bg-[linear-gradient(currentColor,currentColor)] bg-[length:0%_1px] bg-left-bottom bg-no-repeat transition-[background-size] duration-500 group-hover:bg-[length:100%_1px]">
                     {post.title}
                   </span>
-                  <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-neutral-400 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-neutral-950" />
+                  <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-neutral-400 transition-[color,transform] duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-neutral-950" />
                 </h3>
                 <p className="mt-3 max-w-lg text-base leading-relaxed text-neutral-500">
                   {post.excerpt}

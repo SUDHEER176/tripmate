@@ -3,7 +3,7 @@ import { IndoTraviHero } from "@/components/hero/IndoTraviHero";
 import { IndonesianTourismSection } from "@/components/home/IndonesianTourismSection";
 import { HowItWorksSection } from "@/components/home/HowItWorksSection";
 import { TourPackagesSection } from "@/components/home/TourPackagesSection";
-import { TestimonialSection } from "@/components/home/TestimonialSection";
+import { BudgetTrustSection } from "@/components/home/BudgetTrustSection";
 import { BlogSection } from "@/components/home/BlogSection";
 import { ProductPreviewSection } from "@/components/home/ProductPreviewSection";
 import { FaqSection } from "@/components/home/FaqSection";
@@ -19,7 +19,7 @@ export function LandingPage() {
         <HowItWorksSection />
         <ProductPreviewSection />
         <TourPackagesSection />
-        <TestimonialSection />
+        <BudgetTrustSection />
         <BlogSection />
         <FaqSection />
         <IndoTraviFooter />

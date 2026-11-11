@@ -68,7 +68,7 @@ export function TourPackagesSection() {
                       src={idea.image}
                       alt={idea.destination}
                       loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-[1.2s] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
+                      className="h-full w-full object-cover"
                     />
                     <span className="absolute left-4 top-4 rounded-full bg-white px-3 py-1 text-xs font-medium text-neutral-950">
                       {idea.days} days · {idea.pace}
@@ -79,7 +79,7 @@ export function TourPackagesSection() {
                     <h3 className="font-display text-2xl leading-tight tracking-tight text-neutral-950">
                       {idea.title}
                     </h3>
-                    <ArrowRight className="mt-1.5 h-5 w-5 shrink-0 text-neutral-400 transition-all duration-300 group-hover:translate-x-1 group-hover:text-neutral-950" />
+                    <ArrowRight className="mt-1.5 h-5 w-5 shrink-0 text-neutral-400 transition-[color,transform] duration-200 group-hover:translate-x-0.5 group-hover:text-neutral-950" />
                   </div>
                   <p className="mt-2 text-sm text-neutral-500">
                     {idea.highlights.join(" · ")}
