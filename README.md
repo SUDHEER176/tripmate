@@ -60,7 +60,12 @@ frontend/   React app (Vite): src/, public/, index.html, vite.config.js
 backend/    Supabase: Edge Functions, database migrations, config, and the backend tests
 ```
 
-The backend runs on Supabase, not on your machine, so `backend/` has no `start` script. The frontend reuses the budget and route-optimizer code from `backend/supabase/functions/_shared/`.
+The backend runs in two ways, from the same code:
+
+- **Deployed on Supabase** as Edge Functions (production).
+- **Locally with Node:** `cd backend && npm start` serves the same three APIs on `http://localhost:8000/functions/v1/...`, with no Docker needed. Copy `backend/.env.example` to `backend/.env` first, then set `VITE_API_URL=http://localhost:8000/functions/v1` in `frontend/.env` so the frontend uses it. Leave `VITE_API_URL` empty to use Supabase.
+
+The database and login always stay on your Supabase project. The frontend reuses the budget and route-optimizer code from `backend/supabase/functions/_shared/`.
 
 ---
 

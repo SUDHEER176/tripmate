@@ -4,12 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
     "test": "node --test tests/backend/*.test.js",
     "test:integration": "node --test tests/integration/*.test.js",
     "mock-llm": "node tests/integration/mock-llm-server.js",
     "check": "deno check supabase/functions/generate-itinerary/index.js supabase/functions/trips/index.js supabase/functions/trip-assistant/index.js"
   },
-  "devDependencies": {
+  "dependencies": {
     "@supabase/supabase-js": "^2.75.0"
   },
   "engines": {

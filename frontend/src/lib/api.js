@@ -251,9 +251,40 @@ async function toApiError(error) {
   );
 }
 
+// Set VITE_API_URL (e.g. http://localhost:8000/functions/v1) to use the local
+// backend server instead of the Edge Functions deployed on Supabase.
+const LOCAL_API_URL = (import.meta.env.VITE_API_URL || "")
+  .trim()
+  .replace(/\/+$/, "");
+
+async function requestLocal(path, method, body) {
+  const { data: session } = await supabase.auth.getSession();
+  const token =
+    session.session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
+  let response;
+  try {
+    response = await fetch(`${LOCAL_API_URL}/${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw await toApiError(null);
+  }
+  if (!response.ok) throw await toApiError({ context: response });
+  return (await response.json()).data;
+}
+
 async function request(path, options = {}) {
+  const method =
+    options.method ?? (options.body === undefined ? "GET" : "POST");
+  if (LOCAL_API_URL) return requestLocal(path, method, options.body);
   const { data, error } = await supabase.functions.invoke(path, {
-    method: options.method ?? (options.body === undefined ? "GET" : "POST"),
+    method,
     body: options.body,
   });
   if (error) throw await toApiError(error);
