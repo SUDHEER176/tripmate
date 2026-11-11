@@ -25,7 +25,7 @@
 
 | Part | Technology |
 |---|---|
-| **Frontend** | React 19 + Vite + TypeScript |
+| **Frontend** | React 19 + Vite + JavaScript (JSX) |
 | **Styling** | Tailwind CSS v4 + class-variance-authority |
 | **Routing** | React Router v7 |
 | **Database & Auth** | Supabase (PostgreSQL + Supabase Auth) |
@@ -85,7 +85,7 @@ npx supabase link --project-ref <your-project-ref>
 npx supabase db push
 ```
 
-Budget data model: every cost lives in `trip_expenses`. Each priced activity owns exactly one linked expense (kept in sync by a trigger), so nothing is counted twice. `cost_basis` says how an amount scales: `total`, `per_person`, `per_night`, `per_person_per_night`, `per_day`, `per_person_per_day`. The calculation in `supabase/functions/_shared/budget.ts` is shared by the Edge Functions and the frontend.
+Budget data model: every cost lives in `trip_expenses`. Each priced activity owns exactly one linked expense (kept in sync by a trigger), so nothing is counted twice. `cost_basis` says how an amount scales: `total`, `per_person`, `per_night`, `per_person_per_night`, `per_day`, `per_person_per_day`. The calculation in `supabase/functions/_shared/budget.js` is shared by the Edge Functions and the frontend.
 
 ---
 
@@ -132,7 +132,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
 
 | Job | What it does |
 |---|---|
-| **checks** | Type-checks the frontend (`tsc`) and the Edge Functions (`deno check`), runs the unit tests, builds for production |
+| **checks** | Checks the Edge Functions load (`deno check`), runs the unit tests, builds for production |
 | **integration** | Starts a local Supabase stack and a mock LLM in the runner, serves the Edge Functions, runs the end-to-end API tests |
 | **deploy** | On `main` only, after both pass: `supabase db push` (migrations) and `supabase functions deploy` |
 
@@ -149,8 +149,8 @@ To enable the backend deploy, create a GitHub environment named `production` wit
 Without them the deploy job is skipped with a notice; checks and tests still run.
 
 ```bash
-npm run typecheck              # frontend
-npm run typecheck:functions    # Edge Functions with Deno 2.1 (same as the Supabase runtime)
+npm test                       # unit tests
+npm run build                  # production build
 ```
 
 ---
@@ -167,3 +167,5 @@ npm run typecheck:functions    # Edge Functions with Deno 2.1 (same as the Supab
 | **Trip Planner** | `/plan-trip` | Authenticated | Enter destination, dates, budget & preferences |
 | **Trip Details** | `/trips/:id` | Authenticated | View day-by-day plan, edit stops, map & budget |
 | **My Trips** | `/my-trips` | Authenticated | Manage all saved travel plans |
+#   t r i p m a t e  
+ 
