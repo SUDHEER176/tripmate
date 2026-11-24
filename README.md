@@ -116,14 +116,14 @@ cp .env.example .env.local     # VITE_FIREBASE_PROJECT_ID=demo-tripmate, any API
 npm run dev
 ```
 
-Email codes are printed to the backend console when `RESEND_API_KEY` isn't set.
+Email codes are printed to the backend console when `BREVO_API_KEY` isn't set (and `NODE_ENV` isn't `production`).
 
 | Backend variable | Default | Purpose |
 |---|---|---|
 | `FIREBASE_PROJECT_ID` | — | Your project id (`demo-tripmate` with the emulators) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Service-account key file, for a local server talking to the real project |
 | `LLM_API_KEY` | — | Any OpenAI-compatible key (`OPENAI_API_KEY` also works) |
-| `RESEND_API_KEY`, `EMAIL_FROM` | — | Sends the 6-digit codes |
+| `BREVO_API_KEY`, `EMAIL_FROM` | — | Sends the 6-digit codes via [Brevo](https://www.brevo.com). `EMAIL_FROM` must be a sender verified in Brevo |
 | `LLM_BASE_URL` | OpenAI | Use any OpenAI-compatible API |
 | `LLM_MODEL` | `gpt-4o-mini` | Model used for generation and the assistant |
 | `AI_RATE_LIMIT_PER_HOUR` / `_PER_DAY` | `5` / `20` | Itinerary generations per user |
@@ -153,7 +153,7 @@ cd .. && backend/node_modules/.bin/firebase deploy --only firestore
 2. Render dashboard → **New → Blueprint** → pick the repo. It reads `render.yaml` and creates the free `tripmate-api` service.
 3. Fill in the values it asks for:
    - `FIREBASE_SERVICE_ACCOUNT`: the **whole contents** of the service-account JSON (Firebase console → Project settings → Service accounts → Generate new private key).
-   - `LLM_API_KEY`, and optionally `GOOGLE_ROUTES_API_KEY` and `RESEND_API_KEY`.
+   - `LLM_API_KEY`, `BREVO_API_KEY` and `EMAIL_FROM` (a sender verified in Brevo), and optionally `GOOGLE_ROUTES_API_KEY`.
    - `ALLOWED_ORIGINS`: your Vercel URL.
 4. Check `https://<your-service>.onrender.com/health` responds.
 

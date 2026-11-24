@@ -26,10 +26,11 @@ services:
         value: gemini-2.5-flash
       - key: GOOGLE_ROUTES_API_KEY
         sync: false
-      - key: RESEND_API_KEY
+      - key: BREVO_API_KEY
         sync: false
+      # A sender address verified in Brevo, e.g. TripMate <you@gmail.com>
       - key: EMAIL_FROM
-        value: TripMate <onboarding@resend.dev>
+        sync: false
       # Your Vercel URL, e.g. https://tripmate.vercel.app (comma-separated).
       - key: ALLOWED_ORIGINS
         sync: false
