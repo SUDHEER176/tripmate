@@ -157,7 +157,7 @@ cd .. && backend/node_modules/.bin/firebase deploy --only firestore
    - `ALLOWED_ORIGINS`: your Vercel URL.
 4. Check `https://<your-service>.onrender.com/health` responds.
 
-If Render gives the service a different URL than `https://tripmate-api.onrender.com`, update the destination in `frontend/vercel.json`.
+If Render gives the service a different URL than `https://tripmate-f76b.onrender.com`, update the destination in `frontend/vercel.json`.
 
 The free instance sleeps after 15 minutes idle; the first request after that takes about 30 seconds.
 
