@@ -7,13 +7,13 @@ import {
   haversineMeters,
   pathTotals,
   planDayRoute,
-} from "../../supabase/functions/_shared/route-optimizer.js";
+} from "../../functions/_shared/route-optimizer.js";
 import {
   googleRouteMatrix,
   travelMatrix,
-} from "../../supabase/functions/_shared/travel-matrix.js";
-import { parseOptimizeRouteInput } from "../../supabase/functions/_shared/trip-actions.js";
-import { ValidationError } from "../../supabase/functions/_shared/http.js";
+} from "../../functions/_shared/travel-matrix.js";
+import { parseOptimizeRouteInput } from "../../functions/_shared/trip-actions.js";
+import { ValidationError } from "../../functions/_shared/http.js";
 
 /** Deterministic pseudo-random numbers so failures are reproducible. */
 function rng(seed) {

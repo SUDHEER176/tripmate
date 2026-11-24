@@ -88,6 +88,13 @@ export function Auth3Block({ mode = "signin" }) {
         setInfoMessage(`We've sent a verification code to ${email}.`);
       }
     } catch (err) {
+      if (err?.code === "EMAIL_NOT_VERIFIED") {
+        setOtpMode("signup");
+        setStep("otp");
+        setResendCountdown(60);
+        setInfoMessage(err.message);
+        return;
+      }
       const msg = err instanceof Error ? err.message : "Authentication failed.";
       setError(msg);
     } finally {
@@ -131,7 +138,7 @@ export function Auth3Block({ mode = "signin" }) {
     setLoading(true);
     setError(null);
     try {
-      await verifyOtp(email, code, otpMode);
+      await verifyOtp(email, code, otpMode, fullName || undefined);
       navigate(from, { replace: true });
     } catch (err) {
       const msg =
@@ -150,11 +157,7 @@ export function Auth3Block({ mode = "signin" }) {
     setLoading(true);
     setError(null);
     try {
-      if (otpMode === "signup") {
-        await signUp(email, password || "password123", fullName || "Traveler");
-      } else {
-        await sendOtp(email);
-      }
+      await sendOtp(email, fullName, otpMode);
       setResendCountdown(60);
       setInfoMessage(
         "A fresh 6-digit verification code has been sent to your email.",

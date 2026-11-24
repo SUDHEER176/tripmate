@@ -1,0 +1,35 @@
+# Render blueprint for the TripMate API (free plan).
+# Render dashboard > New > Blueprint > pick this repo. Values marked
+# `sync: false` are asked for once in the dashboard and never stored here.
+services:
+  - type: web
+    name: tripmate-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: FIREBASE_PROJECT_ID
+        value: tripmate-ff39b
+      # Paste the WHOLE service-account JSON (Firebase console > Project
+      # settings > Service accounts > Generate new private key).
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: LLM_MODEL
+        value: gemini-2.5-flash
+      - key: GOOGLE_ROUTES_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: TripMate <onboarding@resend.dev>
+      # Your Vercel URL, e.g. https://tripmate.vercel.app (comma-separated).
+      - key: ALLOWED_ORIGINS
+        sync: false

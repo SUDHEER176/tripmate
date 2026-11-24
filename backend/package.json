@@ -3,18 +3,26 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "index.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test tests/backend/*.test.js",
-    "test:integration": "node --test tests/integration/*.test.js",
+    "test:integration": "node --test --test-concurrency=1 tests/integration/*.test.js",
     "mock-llm": "node tests/integration/mock-llm-server.js",
-    "check": "deno check supabase/functions/generate-itinerary/index.js supabase/functions/trips/index.js supabase/functions/trip-assistant/index.js"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.75.0"
+    "emulators": "firebase emulators:start --config ../firebase.json --only auth,firestore --project demo-tripmate",
+    "import-supabase": "node scripts/import-from-supabase.js",
+    "check": "node --check server.js && node --check app.js && node --check index.js"
   },
   "engines": {
-    "node": ">=22.6"
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.1",
+    "firebase-functions": "^7.4.0"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.37.0",
+    "pg": "^8.23.1"
   }
 }

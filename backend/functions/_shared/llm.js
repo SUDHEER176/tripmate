@@ -7,13 +7,13 @@ import { AiOutputError } from "./validation.js";
 import { addDaysUtc, tripDayCount, tripNightCount } from "./budget.js";
 
 function envInt(name, fallback) {
-  const value = Number(Deno.env.get(name));
+  const value = Number(process.env[name]);
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
 /** Reads the LLM provider settings. Call per request, never at import time. */
 export function llmConfigFromEnv() {
-  const apiKey = Deno.env.get("LLM_API_KEY") ?? Deno.env.get("OPENAI_API_KEY");
+  const apiKey = process.env["LLM_API_KEY"] ?? process.env["OPENAI_API_KEY"];
   if (!apiKey) {
     throw new ApiError(
       503,
@@ -21,7 +21,7 @@ export function llmConfigFromEnv() {
       "AI features are not configured on the server yet.",
     );
   }
-  const baseUrl = Deno.env.get("LLM_BASE_URL") ?? "https://api.openai.com/v1";
+  const baseUrl = process.env["LLM_BASE_URL"] ?? "https://api.openai.com/v1";
   const isGemini = baseUrl.includes("googleapis.com");
   const fallbackTokens = isGemini ? 8192 : 12_000;
   const configuredTokens = envInt("LLM_MAX_TOKENS", fallbackTokens);
@@ -33,7 +33,7 @@ export function llmConfigFromEnv() {
     apiKey,
     baseUrl,
     model:
-      Deno.env.get("LLM_MODEL") ??
+      process.env["LLM_MODEL"] ??
       (isGemini ? "gemini-3.8-flash" : "gpt-4o-mini"),
     timeoutMs: envInt("LLM_TIMEOUT_MS", 115_000),
     maxTokens,

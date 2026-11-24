@@ -1,9 +1,11 @@
-// Per-user sliding-window rate limits backed by public.consume_rate_limit().
+// Per-user sliding-window rate limits stored in Firestore:
+// rate_limits/{userId}__{bucket} holds the timestamps (ms) of recent requests.
 
-import { ApiError, mapDbError } from "./http.js";
+import { db as firestore } from "./firebase.js";
+import { ApiError } from "./http.js";
 
 function envInt(name, fallback) {
-  const value = Number(Deno.env.get(name));
+  const value = Number(process.env[name]);
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
@@ -50,19 +52,36 @@ export const RATE_LIMITS = {
   },
 };
 
-export async function enforceRateLimit(db, rule) {
-  const { data, error } = await db.rpc("consume_rate_limit", {
-    p_bucket: rule.bucket,
-    p_max: rule.max,
-    p_window_seconds: rule.windowSeconds,
-  });
-  if (error) throw mapDbError(error, "Rate limit check");
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row?.allowed) {
-    const retryAfter = Math.max(
-      1,
-      Number(row?.retry_after_seconds) || rule.windowSeconds,
+/** Records one request for this user and bucket, or throws 429 if over the limit. */
+async function consume(userId, rule) {
+  const ref = firestore().collection("rate_limits").doc(`${userId}__${rule.bucket}`);
+  return firestore().runTransaction(async (tx) => {
+    const now = Date.now();
+    const windowMs = rule.windowSeconds * 1000;
+    const snapshot = await tx.get(ref);
+    const recent = (snapshot.exists ? snapshot.data().events ?? [] : []).filter(
+      (t) => t > now - windowMs,
     );
+    if (recent.length >= rule.max) {
+      const oldest = Math.min(...recent);
+      return { allowed: false, retryAfter: Math.ceil((oldest + windowMs - now) / 1000) };
+    }
+    recent.push(now);
+    tx.set(ref, { user_id: userId, bucket: rule.bucket, events: recent });
+    return { allowed: true };
+  });
+}
+
+export async function enforceRateLimit(db, rule) {
+  let row;
+  try {
+    row = await consume(db.userId, rule);
+  } catch (err) {
+    console.error("Rate limit check:", err?.message ?? err);
+    throw new ApiError(500, "DATABASE_ERROR", "Rate limit check failed. Please try again.");
+  }
+  if (!row.allowed) {
+    const retryAfter = Math.max(1, Number(row.retryAfter) || rule.windowSeconds);
     throw new ApiError(
       429,
       "RATE_LIMITED",

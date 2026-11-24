@@ -1,9 +1,9 @@
-// Supabase Edge Function: trip-assistant
+// API: trip-assistant
 //
-// POST /functions/v1/trip-assistant
+// POST /api/trip-assistant
 //   { trip_id, messages: [{ role: "user" | "assistant", content }] }   (last message from the user)
 //
-// Flow: verify JWT → validate input → load the caller's trip → rate limit →
+// Flow: verify session → validate input → load the caller's trip → rate limit →
 // run the tool-calling agent (each tool is an ownership-checked trip action)
 // → return the reply, the actions taken and the updated trip.
 // The conversation is not stored; the client sends recent history each time.
@@ -12,7 +12,7 @@ import { serveJson } from "../_shared/handler.js";
 import { logError, ok, readJsonBody } from "../_shared/http.js";
 import { llmConfigFromEnv } from "../_shared/llm.js";
 import { enforceRateLimit, RATE_LIMITS } from "../_shared/rate-limit.js";
-import { authenticate } from "../_shared/supabase.js";
+import { authenticate } from "../_shared/auth.js";
 import { routesApiKeyFromEnv, travelMatrix } from "../_shared/travel-matrix.js";
 import { getOwnedTrip, getTripDetails } from "../_shared/trips-repo.js";
 import { utcToday } from "../_shared/validation.js";
@@ -25,11 +25,11 @@ import {
   runAgent,
 } from "../_shared/assistant.js";
 
-// Per model call; several calls fit under the Edge Function wall-clock limit.
+// Per model call, so one slow call cannot use up the whole request.
 const MODEL_CALL_TIMEOUT_MS = 40_000;
 const MODEL_MAX_TOKENS = 1500;
 
-serveJson(["POST"], async (req, { requestId }) => {
+export default serveJson(["POST"], async (req, { requestId }) => {
   const { db, user } = await authenticate(req);
   const request = parseAssistantRequest(await readJsonBody(req));
   const trip = await getOwnedTrip(db, user.id, request.trip_id);

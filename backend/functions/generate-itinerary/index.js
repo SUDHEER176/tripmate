@@ -1,10 +1,10 @@
-// Supabase Edge Function: generate-itinerary
+// API: generate-itinerary
 //
-// POST /functions/v1/generate-itinerary
+// POST /api/generate-itinerary
 //   New trip:    { destination, start_date, end_date, travelers, budget, travel_style?, interests?, pace?, preferences? }
 //   Regenerate:  { trip_id, confirm_regenerate: true, ...optional field overrides }
 //
-// Flow: verify JWT → validate input → rate limit → call LLM → validate output
+// Flow: verify session → validate input → rate limit → call LLM → validate output
 // → save trip, days, activities and expenses in one transaction → return the saved trip.
 // An invalid or incomplete AI response is never saved.
 
@@ -12,7 +12,6 @@ import { serveJson } from "../_shared/handler.js";
 import {
   ApiError,
   logError,
-  mapDbError,
   ok,
   readJsonBody,
 } from "../_shared/http.js";
@@ -22,11 +21,21 @@ import {
   requestItineraryJson,
 } from "../_shared/llm.js";
 import { enforceRateLimit, RATE_LIMITS } from "../_shared/rate-limit.js";
-import { authenticate } from "../_shared/supabase.js";
+import { authenticate } from "../_shared/auth.js";
 import {
   ESTIMATE_DISCLAIMER,
   getOwnedTrip,
   getTripDetails,
+  hasDuplicateExpense,
+  insertTrip,
+  mutateTrip,
+  newId,
+  nowIso,
+  pick,
+  syncActivityExpense,
+  ACTIVITY_FIELDS,
+  DAY_FIELDS,
+  EXPENSE_FIELDS,
 } from "../_shared/trips-repo.js";
 import {
   AiOutputError,
@@ -36,7 +45,62 @@ import {
 } from "../_shared/validation.js";
 
 const MAX_ATTEMPTS = 2;
-// Leaves headroom under the Edge Function wall-clock limit (150 s on the free plan).
+
+/**
+ * Writes a validated AI itinerary into a trip (new, or regenerated in place).
+ * Regeneration replaces the days, activities, their linked expenses and earlier
+ * AI expenses; expenses the user added are kept, and an AI expense with the same
+ * category and title as one of them is skipped.
+ */
+function applyItinerary(trip, fields, itinerary) {
+  const now = nowIso();
+  Object.assign(trip, fields, {
+    status: "planned",
+    generated_at: now,
+    generation_count: (trip.generation_count ?? 0) + 1,
+  });
+  trip.expenses = (trip.expenses ?? []).filter((e) => e.source === "user");
+
+  trip.itinerary_days = itinerary.days.map((day) => ({
+    ...pick(day, DAY_FIELDS),
+    trip_id: trip.id,
+    created_at: now,
+    updated_at: now,
+    activities: [],
+  }));
+  const daysById = new Map(trip.itinerary_days.map((day) => [day.id, day]));
+  for (const raw of itinerary.activities) {
+    const day = daysById.get(raw.itinerary_day_id);
+    if (!day) throw new AiOutputError(["an activity references a day outside this trip"]);
+    const activity = {
+      ...pick(raw, ACTIVITY_FIELDS),
+      cost_basis: raw.cost_basis ?? "per_person",
+      cost_is_estimate: true,
+      created_at: now,
+      updated_at: now,
+    };
+    day.activities.push(activity);
+    syncActivityExpense(trip, activity);
+  }
+  for (const raw of itinerary.expenses) {
+    if (hasDuplicateExpense(trip, raw.category, raw.title)) continue;
+    trip.expenses.push({
+      ...pick(raw, EXPENSE_FIELDS),
+      id: newId(),
+      trip_id: trip.id,
+      activity_id: null,
+      currency: "INR",
+      quantity: raw.quantity ?? 1,
+      cost_basis: raw.cost_basis ?? "total",
+      source: "ai",
+      is_estimate: true,
+      created_at: now,
+      updated_at: now,
+    });
+  }
+  return trip;
+}
+// Upper bound for the whole AI step, so a slow provider cannot hold a request forever.
 const TOTAL_AI_BUDGET_MS = 140_000;
 
 async function generateItinerary(config, input, requestId) {
@@ -79,7 +143,7 @@ async function generateItinerary(config, input, requestId) {
   throw lastError ?? new AiOutputError(["no valid response"]);
 }
 
-serveJson(["POST"], async (req, { requestId }) => {
+export default serveJson(["POST"], async (req, { requestId }) => {
   const { db, user } = await authenticate(req);
   const request = parseGenerateRequest(await readJsonBody(req));
 
@@ -120,8 +184,7 @@ serveJson(["POST"], async (req, { requestId }) => {
 
   const itinerary = await generateItinerary(config, input, requestId);
 
-  const { data: tripId, error } = await db.rpc("save_generated_trip", {
-    p_trip: {
+  const tripFields = {
       title: itinerary.title,
       destination: input.destination,
       destination_lat: itinerary.destination_lat,
@@ -130,22 +193,32 @@ serveJson(["POST"], async (req, { requestId }) => {
       end_date: input.end_date,
       budget: input.budget,
       travelers: input.travelers,
-      interests: input.interests,
+      interests: input.interests ?? [],
       pace: input.pace,
       travel_style: input.travel_style,
       notes: input.preferences,
       travel_notes: itinerary.travel_notes,
       ai_model: config.model,
-    },
-    p_days: itinerary.days,
-    p_activities: itinerary.activities,
-    p_expenses: itinerary.expenses,
-    p_trip_id: existing?.id ?? null,
-  });
-  if (error || typeof tripId !== "string")
-    throw mapDbError(error ?? {}, "Saving the itinerary");
-
-  const trip = await getOwnedTrip(db, user.id, tripId);
+  };
+  const trip = existing
+    ? (await mutateTrip(db, existing.id, (trip) => applyItinerary(trip, tripFields, itinerary),
+        "Saving the itinerary")).trip
+    : await insertTrip(
+        applyItinerary(
+          {
+            id: newId(),
+            user_id: user.id,
+            currency: "INR",
+            total_estimated_cost: 0,
+            generation_count: 0,
+            created_at: nowIso(),
+            expenses: [],
+          },
+          tripFields,
+          itinerary,
+        ),
+      );
+  const tripId = trip.id;
   const details = await getTripDetails(db, trip);
 
   return ok(

@@ -1,4 +1,4 @@
-// HTTP helpers shared by all Edge Functions. Uses only web-standard APIs.
+// HTTP helpers shared by all API handlers. Uses only web-standard APIs.
 //
 // Every response uses one envelope:
 //   success: { "data": ... }
@@ -40,7 +40,7 @@ export function buildCorsHeaders(origin, allowedOrigins) {
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
+      "authorization, content-type",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -60,62 +60,6 @@ export function jsonResponse(body, status = 200, headers = {}) {
 
 export function ok(data, status = 200, headers = {}) {
   return jsonResponse({ data }, status, headers);
-}
-
-/** Translates a PostgREST / Postgres error into a safe ApiError (no SQL details leak). */
-export function mapDbError(error, context = "Database operation") {
-  switch (error.code) {
-    case "PGRST116":
-    case "P0002":
-      return new ApiError(
-        404,
-        "NOT_FOUND",
-        "The requested resource was not found.",
-      );
-    case "23505":
-      return new ApiError(
-        409,
-        "DUPLICATE",
-        "A matching record already exists.",
-      );
-    case "23503":
-      return new ApiError(
-        409,
-        "CONFLICT",
-        "A related record no longer exists.",
-      );
-    case "23514":
-    case "23502":
-    case "22023":
-    case "22P02":
-    case "22007":
-    case "22008":
-      return new ApiError(
-        422,
-        "CONSTRAINT_VIOLATION",
-        "The data was rejected by validation rules.",
-      );
-    case "42501":
-      // RLS rejection: report as not found so other users' resources are not revealed.
-      return new ApiError(
-        404,
-        "NOT_FOUND",
-        "The requested resource was not found.",
-      );
-    case "28000":
-    case "PGRST301":
-      return new ApiError(
-        401,
-        "AUTH_INVALID",
-        "Your session is invalid or has expired. Please sign in again.",
-      );
-    default:
-      return new ApiError(
-        500,
-        "DATABASE_ERROR",
-        `${context} failed. Please try again.`,
-      );
-  }
 }
 
 export function errorResponse(err, cors, requestId) {
@@ -190,13 +134,4 @@ export async function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
   } catch {
     throw new ApiError(400, "INVALID_JSON", "Request body is not valid JSON.");
   }
-}
-
-export function bearerToken(req) {
-  const header = req.headers.get("authorization") ?? "";
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match || !match[1].trim()) {
-    throw new ApiError(401, "AUTH_REQUIRED", "Sign in to continue.");
-  }
-  return match[1].trim();
 }

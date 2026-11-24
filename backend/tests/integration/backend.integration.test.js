@@ -1,23 +1,28 @@
-// End-to-end tests against a running Supabase stack (local or a staging project).
+// End-to-end tests against a running backend server and the Firebase emulators.
 //
-//   SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY=... MOCK_LLM_URL=http://127.0.0.1:8787 \
-//     npm run test:integration
+//   npm run emulators          (Auth on :9099, Firestore on :8080, project demo-tripmate)
+//   npm run mock-llm
+//   npm start                  (with the emulator variables below)
+//   API_URL=http://127.0.0.1:8000 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+//   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_PROJECT_ID=demo-tripmate \
+//   AI_RATE_LIMIT_PER_HOUR=8 npm run test:integration
 //
-// Requires the migrations applied, all Edge Functions served, and an LLM
-// endpoint (tests/integration/mock-llm-server.ts locally). Skips when
-// SUPABASE_URL is not set.
+// Skips unless API_URL and both emulator hosts are set. Never point these
+// tests at a real Firebase project.
 
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { createClient } from "@supabase/supabase-js";
-import { calculateBudget } from "../../supabase/functions/_shared/budget.js";
+import { calculateBudget } from "../../functions/_shared/budget.js";
+import { auth, db as firestore } from "../../functions/_shared/firebase.js";
 
-const URL_ = process.env.SUPABASE_URL;
-const ANON = process.env.SUPABASE_ANON_KEY ?? "";
+const URL_ = (process.env.API_URL ?? "").replace(/\/+$/, "");
+const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST;
+const PROJECT = process.env.FIREBASE_PROJECT_ID ?? "demo-tripmate";
 const skip =
-  !URL_ || !ANON ? "SUPABASE_URL / SUPABASE_ANON_KEY not set" : false;
-
-// eslint-disable-line @typescript-eslint/no-explicit-any
+  !URL_ || !AUTH_HOST || !FIRESTORE_HOST
+    ? "API_URL / FIREBASE_AUTH_EMULATOR_HOST / FIRESTORE_EMULATOR_HOST not set"
+    : false;
 
 function isoDate(offsetDays) {
   return new Date(Date.now() + offsetDays * 86_400_000)
@@ -25,12 +30,13 @@ function isoDate(offsetDays) {
     .slice(0, 10);
 }
 
+/** Calls /api/<path>. `token` is the Firebase ID token of the user making the call. */
 async function call(path, opts = {}) {
-  const headers = { apikey: ANON };
+  const headers = {};
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   if (opts.body !== undefined || opts.raw !== undefined)
     headers["Content-Type"] = "application/json";
-  const res = await fetch(`${URL_}/functions/v1/${path}`, {
+  const res = await fetch(`${URL_}/api/${path}`, {
     method:
       opts.method ??
       (opts.body !== undefined || opts.raw !== undefined ? "POST" : "GET"),
@@ -46,23 +52,48 @@ async function call(path, opts = {}) {
   } catch {
     json = { raw: text };
   }
-  return { status: res.status, json };
+  return { status: res.status, json, headers: res.headers };
 }
 
-async function newUser(label) {
-  const client = createClient(URL_, ANON, { auth: { persistSession: false } });
+/** Signs in through the Auth emulator's REST API and returns an ID token. */
+async function signIn(email, password) {
+  const res = await fetch(
+    `http://${AUTH_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    },
+  );
+  const body = await res.json();
+  assert.equal(res.status, 200, JSON.stringify(body));
+  return body.idToken;
+}
+
+async function newUser(label, { verified = true } = {}) {
   const email = `it-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = `Pw-${Math.random().toString(36).slice(2)}-9!`;
-  const { data, error } = await client.auth.signUp({ email, password });
-  assert.ifError(error);
-  assert.ok(data.session, "local auth must not require email confirmation");
-  return {
+  const record = await auth().createUser({
     email,
     password,
-    token: data.session.access_token,
-    id: data.user.id,
-    client,
-  };
+    displayName: label,
+    emailVerified: verified,
+  });
+  return { email, password, id: record.uid, token: await signIn(email, password) };
+}
+
+/** Reads a document through the Firestore emulator as a browser would (rules apply). */
+async function browserRead(path, token) {
+  const res = await fetch(
+    `http://${FIRESTORE_HOST}/v1/projects/${PROJECT}/databases/(default)/documents/${path}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return res.status;
+}
+
+async function storedTrip(id) {
+  const snapshot = await firestore().collection("trips").doc(id).get();
+  return snapshot.exists ? snapshot.data() : null;
 }
 
 const tripRequest = () => ({
@@ -87,13 +118,18 @@ before(async () => {
   bob = await newUser("bob");
 });
 
+
 test("authentication is required", { skip }, async () => {
   const noToken = await call("generate-itinerary", { body: tripRequest() });
   assert.equal(noToken.status, 401);
-  const badToken = await call("trips", { token: "not-a-jwt" });
+  const badToken = await call("trips", { token: "not-a-firebase-token" });
   assert.equal(badToken.status, 401);
-  const anonAsUser = await call("trips", { token: ANON });
-  assert.equal(anonAsUser.status, 401);
+
+  // Password accounts must confirm their email with the 6-digit code first.
+  const unverified = await newUser("unverified", { verified: false });
+  const blocked = await call("trips", { token: unverified.token });
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.json.error.code, "EMAIL_NOT_VERIFIED");
 });
 
 test(
@@ -202,13 +238,7 @@ test(
   "persists across sessions (refresh) and lists only the owner's trips",
   { skip },
   async () => {
-    const fresh = createClient(URL_, ANON, { auth: { persistSession: false } });
-    const { data, error } = await fresh.auth.signInWithPassword({
-      email: alice.email,
-      password: alice.password,
-    });
-    assert.ifError(error);
-    const token = data.session.access_token;
+    const token = await signIn(alice.email, alice.password);
 
     const got = await call(`trips/${tripId}`, { token });
     assert.equal(got.status, 200);
@@ -296,37 +326,15 @@ test(
     );
     assert.equal(crossed.status, 404);
 
-    // Direct PostgREST access is constrained by RLS.
-    for (const table of [
-      "trips",
-      "itinerary_days",
-      "activities",
-      "trip_expenses",
+    // Browsers have no direct Firestore access, not even to their own trips.
+    for (const [path, token] of [
+      [`trips/${tripId}`, bob.token],
+      [`trips/${tripId}`, alice.token],
+      [`rate_limits/${alice.id}__api_write`, alice.token],
     ]) {
-      const { data } = await bob.client.from(table).select("id");
-      const ids = (data ?? []).map((r) => r.id);
-      assert.ok(
-        ![tripId, day.id, activity.id, expense.id].some((id) =>
-          ids.includes(id),
-        ),
-        `${table} leaked`,
-      );
+      assert.equal(await browserRead(path, token), 403, `${path} is readable`);
     }
-    const insert = await bob.client
-      .from("trip_expenses")
-      .insert({ trip_id: tripId, category: "food", title: "x", amount: 1 });
-    assert.ok(insert.error, "RLS blocks inserting into someone else's trip");
-    const upd = await bob.client
-      .from("trips")
-      .update({ budget: 1 })
-      .eq("id", tripId)
-      .select("id");
-    assert.equal(upd.data?.length ?? 0, 0);
-    const rl = await bob.client.from("rate_limit_events").select("id");
-    assert.ok(
-      rl.error || (rl.data ?? []).length === 0,
-      "rate limit table is not readable",
-    );
+    void expense;
 
     const after = (await call(`trips/${tripId}`, { token: alice.token })).json
       .data;
@@ -442,12 +450,11 @@ test(
     });
     assert.equal(removed.status, 200);
     assert.equal(removed.json.data.budget_summary.estimated_total, beforeTotal);
-    const gone = await alice.client
-      .from("trip_expenses")
-      .select("id")
-      .eq("activity_id", act.id);
+    const gone = (await storedTrip(tripId)).expenses.filter(
+      (e) => e.activity_id === act.id,
+    );
     assert.equal(
-      gone.data?.length,
+      gone.length,
       0,
       "linked expense removed with the activity",
     );
@@ -891,21 +898,32 @@ test("deleting a trip removes all of its records", { skip }, async () => {
     404,
   );
 
-  const days = await alice.client
-    .from("itinerary_days")
-    .select("id")
-    .in("id", dayIds);
-  const acts = await alice.client
-    .from("activities")
-    .select("id")
-    .in("itinerary_day_id", dayIds);
-  const exps = await alice.client
-    .from("trip_expenses")
-    .select("id")
-    .eq("trip_id", tripId);
-  assert.equal(days.data?.length, 0);
-  assert.equal(acts.data?.length, 0);
-  assert.equal(exps.data?.length, 0);
+  // Days, activities and expenses lived in the trip document.
+  assert.equal(await storedTrip(tripId), null);
+  void dayIds;
+});
+
+test("email codes reject wrong input without revealing accounts", { skip }, async () => {
+  const bad = await call("auth-codes/send", { body: { email: "nope", purpose: "sign-in" } });
+  assert.equal(bad.status, 422);
+
+  // The same answer whether or not the account exists.
+  const unknown = await call("auth-codes/send", {
+    body: { email: `nobody-${Date.now()}@example.com`, purpose: "verify" },
+  });
+  assert.equal(unknown.status, 200);
+
+  const email = `code-${Date.now()}@example.com`;
+  const sent = await call("auth-codes/send", { body: { email, purpose: "sign-in" } });
+  assert.equal(sent.status, 200);
+  const again = await call("auth-codes/send", { body: { email, purpose: "sign-in" } });
+  assert.equal(again.status, 429, "codes can't be re-sent immediately");
+
+  const wrong = await call("auth-codes/verify", {
+    body: { email, purpose: "sign-in", code: "000000" },
+  });
+  assert.equal(wrong.status, 400);
+  assert.equal(wrong.json.error.code, "INVALID_CODE");
 });
 
 test("responses use the JSON error envelope", { skip }, async () => {

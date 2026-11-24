@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   ApiError,
   ValidationError,
-} from "../../supabase/functions/_shared/http.js";
+} from "../../functions/_shared/http.js";
 
 import {
   ASSISTANT_TOOLS,
@@ -12,7 +12,7 @@ import {
   createTripToolExecutor,
   parseAssistantRequest,
   runAgent,
-} from "../../supabase/functions/_shared/assistant.js";
+} from "../../functions/_shared/assistant.js";
 
 const config = {
   apiKey: "k",

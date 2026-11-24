@@ -1,5 +1,17 @@
 import { generateLocalPlan } from "./itinerary";
-import { supabase } from "./supabase";
+import {
+  GithubAuthProvider,
+  GoogleAuthProvider,
+  OAuthProvider,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithCustomToken,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  updateProfile,
+} from "firebase/auth";
+import { auth } from "./firebase";
 import { activityExpenseCategory, calculateBudget } from "./budget";
 import {
   chooseTravelMode,
@@ -32,32 +44,77 @@ export function setDemoUser(user) {
   else localStorage.removeItem(USER_KEY);
 }
 
-export async function signUp(email, password, fullName) {
-  if (supabase) {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
+// ---- Firebase auth helpers --------------------------------------------------
+
+const PROVIDERS = {
+  google: () => new GoogleAuthProvider(),
+  github: () => new GithubAuthProvider(),
+  apple: () => new OAuthProvider("apple.com"),
+};
+
+const AUTH_MESSAGES = {
+  "auth/email-already-in-use": "An account with this email already exists. Sign in instead.",
+  "auth/invalid-credential": "Invalid email or password.",
+  "auth/wrong-password": "Invalid email or password.",
+  "auth/user-not-found": "Invalid email or password.",
+  "auth/weak-password": "Choose a password with at least 6 characters.",
+  "auth/invalid-email": "Please enter a valid email address.",
+  "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
+  "auth/popup-closed-by-user": "The sign-in window was closed before finishing.",
+  "auth/account-exists-with-different-credential":
+    "This email is already registered with another sign-in method.",
+  "auth/operation-not-allowed": "This sign-in method is not enabled for this app.",
+};
+
+function authError(error, fallback) {
+  return new Error(AUTH_MESSAGES[error?.code] || error?.message || fallback);
+}
+
+/** Calls the backend's 6-digit email code endpoints (no sign-in needed). */
+async function codeRequest(action, body) {
+  let response;
+  try {
+    response = await fetch(`/api/auth-codes/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
-    if (error) {
-      const msg = error.message?.toLowerCase() || "";
-      if (
-        msg.includes("error sending confirmation") ||
-        msg.includes("error sending") ||
-        error.status === 500
-      ) {
-        throw new Error(
-          "Supabase email delivery failed. To fix: In Supabase Dashboard -> Authentication -> Providers -> Email, toggle OFF 'Confirm email' so accounts activate instantly without waiting for SMTP.",
-        );
-      }
-      if (msg.includes("database error")) {
-        throw new Error(
-          "Database trigger error: Please open Supabase Dashboard -> SQL Editor and run supabase/schema.sql to ensure the profiles table exists.",
-        );
-      }
-      throw error;
+  } catch {
+    throw await toApiError(null);
+  }
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()).data;
+}
+
+export function toAppUser(user) {
+  return {
+    id: user.uid,
+    email: user.email ?? "",
+    fullName: user.displayName || user.email || "Traveler",
+  };
+}
+
+/** A password account counts as signed in only after its email is verified. */
+function isUsable(user) {
+  if (!user) return false;
+  const passwordOnly = user.providerData.every((p) => p.providerId === "password");
+  return user.emailVerified || !passwordOnly;
+}
+
+// ---- Auth ---------------------------------------------------------------------
+
+export async function signUp(email, password, fullName) {
+  if (auth) {
+    try {
+      const { user } = await createUserWithEmailAndPassword(auth, email, password);
+      if (fullName) await updateProfile(user, { displayName: fullName });
+    } catch (error) {
+      throw authError(error, "Could not create your account.");
     }
-    return data;
+    // No session until the emailed 6-digit code is entered (verifyOtp "signup").
+    await firebaseSignOut(auth);
+    await codeRequest("send", { email, purpose: "verify" });
+    return { user: null };
   }
   const user = { id: crypto.randomUUID(), email, fullName };
   setDemoUser(user);
@@ -65,13 +122,23 @@ export async function signUp(email, password, fullName) {
 }
 
 export async function signIn(email, password) {
-  if (supabase) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) throw error;
-    return data;
+  if (auth) {
+    let user;
+    try {
+      ({ user } = await signInWithEmailAndPassword(auth, email, password));
+    } catch (error) {
+      throw authError(error, "Invalid email or password.");
+    }
+    if (!isUsable(user)) {
+      await firebaseSignOut(auth);
+      await codeRequest("send", { email, purpose: "verify" }).catch(() => {});
+      const err = new Error(
+        "Please verify your email first. We've sent you a new 6-digit code.",
+      );
+      err.code = "EMAIL_NOT_VERIFIED";
+      throw err;
+    }
+    return { user: toAppUser(user) };
   }
   if (!password) throw new Error("Password is required.");
   const existing = getDemoUser();
@@ -86,15 +153,15 @@ export async function signIn(email, password) {
 }
 
 export async function signInWithOAuth(provider) {
-  if (supabase) {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: provider,
-      options: {
-        redirectTo: `${window.location.origin}/my-trips`,
-      },
-    });
-    if (error) throw error;
-    return data;
+  if (auth) {
+    const makeProvider = PROVIDERS[provider];
+    if (!makeProvider) throw new Error(`Sign-in with ${provider} is not supported.`);
+    try {
+      const { user } = await signInWithPopup(auth, makeProvider());
+      return { user: toAppUser(user) };
+    } catch (error) {
+      throw authError(error, `Could not sign in with ${provider}.`);
+    }
   }
   const user = {
     id: crypto.randomUUID(),
@@ -105,53 +172,36 @@ export async function signInWithOAuth(provider) {
   return { user };
 }
 
-export async function sendOtp(email, fullName) {
-  if (supabase) {
-    const { data, error } = await supabase.auth.signInWithOtp({
+/**
+ * Emails a 6-digit code. `mode` "email" is a passwordless sign-in code;
+ * "signup" re-sends the code that verifies a new account's email.
+ */
+export async function sendOtp(email, _fullName, mode = "email") {
+  if (auth) {
+    return codeRequest("send", {
       email,
-      options: {
-        data: fullName ? { full_name: fullName } : undefined,
-        shouldCreateUser: true,
-      },
+      purpose: mode === "signup" ? "verify" : "sign-in",
     });
-    if (error) {
-      const msg = error.message?.toLowerCase() || "";
-      if (msg.includes("error sending") || error.status === 500) {
-        throw new Error(
-          "Supabase email delivery rate limit. In Supabase Dashboard -> Authentication -> Providers -> Email, check your email rate limits or configure SMTP.",
-        );
-      }
-      throw error;
-    }
-    return data;
   }
   return { success: true };
 }
 
-export async function verifyOtp(email, token, type = "signup") {
-  if (supabase) {
-    const cleanToken = token.trim();
-    // Try primary type
-    let { data, error } = await supabase.auth.verifyOtp({
+export async function verifyOtp(email, token, type = "signup", fullName) {
+  if (auth) {
+    const { token: customToken } = await codeRequest("verify", {
       email,
-      token: cleanToken,
-      type,
+      code: token.trim(),
+      purpose: type === "signup" ? "verify" : "sign-in",
+      name: fullName,
     });
-    // If error, try fallback type (signup <-> email)
-    if (error && (type === "signup" || type === "email")) {
-      const fallbackType = type === "signup" ? "email" : "signup";
-      const retry = await supabase.auth.verifyOtp({
-        email,
-        token: cleanToken,
-        type: fallbackType,
-      });
-      if (!retry.error) {
-        data = retry.data;
-        error = null;
-      }
+    try {
+      const { user } = await signInWithCustomToken(auth, customToken);
+      // Picks up email_verified in the ID token sent to the API.
+      await user.getIdToken(true);
+      return { user: toAppUser(user) };
+    } catch (error) {
+      throw authError(error, "Invalid or expired verification code.");
     }
-    if (error) throw error;
-    return data;
   }
   // Demo fallback mode
   const user = {
@@ -164,32 +214,34 @@ export async function verifyOtp(email, token, type = "signup") {
 }
 
 export async function signOut() {
-  if (supabase) {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+  if (auth) {
+    await firebaseSignOut(auth);
     return;
   }
   setDemoUser(null);
 }
 
 export async function fetchSession() {
-  if (supabase) {
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) return null;
-    return {
-      id: data.user.id,
-      email: data.user.email ?? "",
-      fullName:
-        data.user.user_metadata.full_name ?? data.user.email ?? "Traveler",
-    };
+  if (auth) {
+    await auth.authStateReady();
+    return isUsable(auth.currentUser) ? toAppUser(auth.currentUser) : null;
   }
   return getDemoUser();
 }
 
+/** Calls back on every sign-in / sign-out. Returns an unsubscribe function. */
+export function onSessionChange(callback) {
+  if (!auth) return () => {};
+  return onAuthStateChanged(auth, (user) =>
+    callback(isUsable(user) ? toAppUser(user) : null),
+  );
+}
+
 // =============================================================================
-// Trips — Supabase mode talks to the `trips` and `generate-itinerary` Edge
-// Functions (the server verifies ownership from the JWT; no user id is sent).
-// Without Supabase credentials, the same operations run against localStorage.
+// Trips — with Firebase configured, these call the `trips`, `generate-itinerary`
+// and `trip-assistant` APIs at /api with the user's Firebase ID token (the server
+// identifies the user from it; no user id is sent). In demo mode the same operations run against
+// localStorage.
 // =============================================================================
 
 export class ApiRequestError extends Error {
@@ -206,8 +258,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function toApiError(error) {
-  const response = error?.context;
+async function toApiError(response) {
   if (response instanceof Response) {
     try {
       const body = await response.clone().json();
@@ -251,44 +302,25 @@ async function toApiError(error) {
   );
 }
 
-// Set VITE_API_URL (e.g. http://localhost:8000/functions/v1) to use the local
-// backend server instead of the Edge Functions deployed on Supabase.
-const LOCAL_API_URL = (import.meta.env.VITE_API_URL || "")
-  .trim()
-  .replace(/\/+$/, "");
-
-async function requestLocal(path, method, body) {
-  const { data: session } = await supabase.auth.getSession();
-  const token =
-    session.session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
+async function request(path, options = {}) {
+  const method =
+    options.method ?? (options.body === undefined ? "GET" : "POST");
   let response;
   try {
-    response = await fetch(`${LOCAL_API_URL}/${path}`, {
+    const token = await auth.currentUser?.getIdToken();
+    response = await fetch(`/api/${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
     throw await toApiError(null);
   }
-  if (!response.ok) throw await toApiError({ context: response });
+  if (!response.ok) throw await toApiError(response);
   return (await response.json()).data;
-}
-
-async function request(path, options = {}) {
-  const method =
-    options.method ?? (options.body === undefined ? "GET" : "POST");
-  if (LOCAL_API_URL) return requestLocal(path, method, options.body);
-  const { data, error } = await supabase.functions.invoke(path, {
-    method,
-    body: options.body,
-  });
-  if (error) throw await toApiError(error);
-  return data.data;
 }
 
 // ---- Local demo mode helpers -------------------------------------------------
@@ -397,14 +429,14 @@ function activityPatch(activity) {
 // ---- Trips -------------------------------------------------------------------
 
 export async function listTrips(userId) {
-  if (supabase) return request("trips");
+  if (auth) return request("trips");
   return readTrips()
     .filter((trip) => trip.user_id === userId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
 export async function getTrip(id) {
-  if (supabase) {
+  if (auth) {
     try {
       return await request(`trips/${encodeURIComponent(id)}`);
     } catch (err) {
@@ -422,7 +454,7 @@ export async function getTrip(id) {
 
 /** Generates an AI itinerary on the server and saves it. Nothing is saved if generation fails. */
 export async function createTrip(userId, values) {
-  if (supabase) {
+  if (auth) {
     const result = await request("generate-itinerary", {
       body: {
         destination: values.destination.trim(),
@@ -445,7 +477,7 @@ export async function createTrip(userId, values) {
 
 /** Replaces the itinerary with a fresh AI plan. Callers must confirm with the user first. */
 export async function regenerateTrip(tripId) {
-  if (supabase) {
+  if (auth) {
     const result = await request("generate-itinerary", {
       body: { trip_id: tripId, confirm_regenerate: true },
     });
@@ -474,13 +506,13 @@ export async function regenerateTrip(tripId) {
 }
 
 export async function updateTrip(tripId, patch) {
-  if (supabase)
+  if (auth)
     return request(`trips/${tripId}`, { method: "PATCH", body: patch });
   return updateLocalTrip(tripId, (trip) => ({ ...trip, ...patch }));
 }
 
 export async function deleteTrip(id) {
-  if (supabase) {
+  if (auth) {
     await request(`trips/${id}`, { method: "DELETE" });
     return;
   }
@@ -497,7 +529,7 @@ export async function addActivity(tripId, dayId) {
     time_slot: "afternoon",
     estimated_cost: 0,
   };
-  if (supabase) {
+  if (auth) {
     const result = await request(`trips/${tripId}/activities`, {
       body: { itinerary_day_id: dayId, ...draft },
     });
@@ -533,7 +565,7 @@ export async function addActivity(tripId, dayId) {
 }
 
 export async function updateActivity(tripId, activity) {
-  if (supabase) {
+  if (auth) {
     await request(`trips/${tripId}/activities/${activity.id}`, {
       method: "PATCH",
       body: activityPatch(activity),
@@ -554,7 +586,7 @@ export async function updateActivity(tripId, activity) {
 }
 
 export async function deleteActivity(tripId, activityId) {
-  if (supabase) {
+  if (auth) {
     await request(`trips/${tripId}/activities/${activityId}`, {
       method: "DELETE",
     });
@@ -571,7 +603,7 @@ export async function deleteActivity(tripId, activityId) {
 
 /** Saves a new order for one day. `activityIds` must list every activity of that day. */
 export async function reorderActivities(tripId, dayId, activityIds) {
-  if (supabase) {
+  if (auth) {
     await request(`trips/${tripId}/activities/reorder`, {
       body: { itinerary_day_id: dayId, activity_ids: activityIds },
     });
@@ -602,7 +634,7 @@ export async function reorderActivities(tripId, dayId, activityIds) {
  * preview; pass `apply` to save the new order and start times.
  */
 export async function optimizeDayRoute(tripId, dayId, apply = false) {
-  if (supabase) {
+  if (auth) {
     return request(`trips/${tripId}/optimize-route`, {
       body: { itinerary_day_id: dayId, apply },
     });
@@ -654,7 +686,7 @@ export async function optimizeDayRoute(tripId, dayId, apply = false) {
 // ---- Expenses ----------------------------------------------------------------
 
 export async function addExpense(tripId, input) {
-  if (supabase) {
+  if (auth) {
     const result = await request(`trips/${tripId}/expenses`, { body: input });
     return result.expense;
   }
@@ -688,7 +720,7 @@ export async function addExpense(tripId, input) {
 }
 
 export async function updateExpense(tripId, expenseId, patch) {
-  if (supabase) {
+  if (auth) {
     await request(`trips/${tripId}/expenses/${expenseId}`, {
       method: "PATCH",
       body: patch,
@@ -704,7 +736,7 @@ export async function updateExpense(tripId, expenseId, patch) {
 }
 
 export async function deleteExpense(tripId, expenseId) {
-  if (supabase) {
+  if (auth) {
     await request(`trips/${tripId}/expenses/${expenseId}`, {
       method: "DELETE",
     });
@@ -719,16 +751,16 @@ export async function deleteExpense(tripId, expenseId) {
 // ---- AI assistant ------------------------------------------------------------
 
 /** Whether the AI trip assistant can run (it needs the server; demo mode has no LLM). */
-export const assistantAvailable = Boolean(supabase);
+export const assistantAvailable = Boolean(auth);
 
 /**
  * Sends the conversation to the trip assistant, which edits the trip with tools
  * on the server. Returns its reply and the updated trip.
  */
 export async function askTripAssistant(tripId, messages) {
-  if (!supabase) {
+  if (!auth) {
     throw new ApiRequestError(
-      "The AI assistant needs a Supabase connection. It is not available in demo mode.",
+      "The AI assistant needs the backend. It is not available in demo mode.",
       0,
       "DEMO_MODE",
     );

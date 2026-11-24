@@ -2,7 +2,7 @@ import { Coins, Lock, MapPinned, RefreshCw } from "lucide-react";
 import { Reveal, SectionHeading } from "./shared";
 
 // Every point here describes what the product actually does
-// (see backend/supabase/functions/_shared/budget.js and the RLS policies).
+// (see backend/functions/_shared/budget.js and the ownership checks in trips-repo.js).
 const points = [
   {
     icon: MapPinned,

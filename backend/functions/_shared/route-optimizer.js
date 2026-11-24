@@ -1,5 +1,5 @@
 // Finds the visiting order of a day's stops that minimises total travel time.
-// Pure (no I/O) so the Edge Functions, the AI assistant and the tests share it.
+// Pure (no I/O) so the API handlers, the AI assistant and the tests share it.
 //
 // The route is an open path (the day can start and end anywhere) with one
 // constraint: stops keep their time-of-day order, so morning stops come before

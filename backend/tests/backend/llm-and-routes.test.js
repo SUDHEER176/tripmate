@@ -2,18 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ApiError,
-  mapDbError,
   readJsonBody,
-} from "../../supabase/functions/_shared/http.js";
+} from "../../functions/_shared/http.js";
 import {
   buildItineraryPrompt,
   requestItineraryJson,
-} from "../../supabase/functions/_shared/llm.js";
+} from "../../functions/_shared/llm.js";
 import {
   AiOutputError,
   parseTripInput,
-} from "../../supabase/functions/_shared/validation.js";
-import { matchRoute } from "../../supabase/functions/trips/routes.js";
+} from "../../functions/_shared/validation.js";
+import { matchRoute } from "../../functions/trips/routes.js";
 
 const config = {
   apiKey: "test-key",
@@ -215,14 +214,3 @@ test("request bodies enforce JSON, size and syntax", async () => {
   await assert.rejects(readJsonBody(req("   ")), (e) => e.status === 400);
 });
 
-test("database errors are mapped without leaking internals", () => {
-  assert.equal(mapDbError({ code: "23505" }).status, 409);
-  assert.equal(mapDbError({ code: "42501" }).status, 404); // RLS denial looks like "not found"
-  assert.equal(mapDbError({ code: "PGRST116" }).status, 404);
-  const generic = mapDbError({
-    code: "XX000",
-    message: 'relation "secret_table" does not exist',
-  });
-  assert.equal(generic.status, 500);
-  assert.ok(!generic.message.includes("secret_table"));
-});

@@ -97,5 +97,5 @@ export async function travelMatrix(points, mode, apiKey, fetchImpl = fetch) {
 
 /** Reads the server-side Routes API key. Call per request, never at import time. */
 export function routesApiKeyFromEnv() {
-  return Deno.env.get("GOOGLE_ROUTES_API_KEY")?.trim() || undefined;
+  return process.env["GOOGLE_ROUTES_API_KEY"]?.trim() || undefined;
 }

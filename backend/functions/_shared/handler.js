@@ -1,15 +1,15 @@
-// Wraps an Edge Function with CORS, a request id, method checks and uniform
-// error responses.
+// Wraps an API handler with CORS, a request id, method checks and uniform
+// error responses. Returns a (Request) => Response function; server.js routes to it.
 
 import { ApiError, buildCorsHeaders, errorResponse } from "./http.js";
 
 export function serveJson(allowedMethods, handle) {
-  const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "*")
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "*")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  Deno.serve(async (req) => {
+  return async (req) => {
     const cors = buildCorsHeaders(req.headers.get("origin"), allowedOrigins);
     const requestId = crypto.randomUUID();
 
@@ -35,5 +35,5 @@ export function serveJson(allowedMethods, handle) {
     } catch (err) {
       return errorResponse(err, cors, requestId);
     }
-  });
+  };
 }

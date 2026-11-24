@@ -34,3 +34,10 @@ dist-ssr
 **/supabase/functions/.env
 .temp/
 **/.temp/
+
+# Firebase
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+*-debug.log
+service-account*.json

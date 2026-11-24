@@ -1,4 +1,4 @@
-// Path routing for the `trips` Edge Function. Pure so it can be unit tested.
+// Path routing for the `trips` API. Pure so it can be unit tested.
 //
 //   GET    /trips                               list the caller's trips
 //   POST   /trips                               create a trip manually (no AI)

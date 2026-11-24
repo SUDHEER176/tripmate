@@ -15,12 +15,7 @@ import {
   EXPENSE_CATEGORIES,
 } from "./budget.js";
 import * as actions from "./trip-actions.js";
-import {
-  asRow,
-  getOwnedTrip,
-  recalculateTripTotal,
-  TRIP_COLUMNS,
-} from "./trips-repo.js";
+import { mutateTrip, recalculateTripTotal } from "./trips-repo.js";
 import {
   ACTIVITY_CATEGORIES,
   isUuid,
@@ -528,24 +523,15 @@ export function createTripToolExecutor(ctx, tripId, state, getMatrix) {
         const patch = parseTripUpdate(
           pickFields(args, ["title", "budget", "travelers", "notes"]),
         );
-        const trip = await getOwnedTrip(ctx.db, ctx.userId, tripId);
-        const { data, error } = await ctx.db
-          .from("trips")
-          .update(patch)
-          .eq("id", tripId)
-          .eq("user_id", ctx.userId)
-          .select(TRIP_COLUMNS)
-          .single();
-        if (error)
-          throw new ApiError(
-            500,
-            "DATABASE_ERROR",
-            "Updating the trip failed.",
-          );
-        const { budget } = await recalculateTripTotal(ctx.db, {
-          ...trip,
-          ...asRow(data),
-        });
+        const { trip } = await mutateTrip(
+          ctx.db,
+          tripId,
+          (trip) => {
+            Object.assign(trip, patch);
+          },
+          "Updating the trip",
+        );
+        const { budget } = recalculateTripTotal(ctx.db, trip);
         const changed = Object.keys(patch).join(", ");
         return done({}, `Updated trip ${changed}`, budget);
       }

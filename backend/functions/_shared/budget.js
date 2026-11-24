@@ -1,4 +1,4 @@
-// Budget calculation shared by the Edge Functions and the React frontend.
+// Budget calculation shared by the backend API and the React frontend.
 // Pure TypeScript with no imports, so Deno, Vite and Node all load it unchanged.
 //
 // All arithmetic is done in integer paise to avoid floating-point drift; results

@@ -17,7 +17,7 @@ const plans = [
       "Interactive OpenStreetMap view",
       "Essential budget breakdowns",
       "Manual activity editing and reordering",
-      "Browser & Supabase cloud storage",
+      "Browser & cloud storage",
     ],
     cta: "Get started free",
     to: "/signup",
@@ -77,7 +77,7 @@ const faqs = [
   },
   {
     q: "Where is my itinerary data stored?",
-    a: "Your data is saved securely in Supabase PostgreSQL with Row Level Security (RLS) enabled, meaning only you have access to your personal trips.",
+    a: "Your data is saved securely in Google Cloud Firestore, and only your signed-in account can access your personal trips.",
   },
 ];
 

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {
   ApiError,
   ValidationError,
-} from "../../supabase/functions/_shared/http.js";
-import { addDaysUtc } from "../../supabase/functions/_shared/budget.js";
+} from "../../functions/_shared/http.js";
+import { addDaysUtc } from "../../functions/_shared/budget.js";
 import {
   AiOutputError,
   parseActivityInput,
@@ -14,7 +14,7 @@ import {
   parseTripInput,
   parseTripUpdate,
   validateAiItinerary,
-} from "../../supabase/functions/_shared/validation.js";
+} from "../../functions/_shared/validation.js";
 import { buildAiItinerary } from "../fixtures/ai-itinerary.js";
 
 const TODAY = "2026-10-26";

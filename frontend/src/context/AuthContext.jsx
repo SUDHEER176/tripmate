@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   fetchSession,
+  onSessionChange,
   signIn as apiSignIn,
   signOut as apiSignOut,
   signUp as apiSignUp,
@@ -8,7 +9,7 @@ import {
   sendOtp as apiSendOtp,
   verifyOtp as apiVerifyOtp,
 } from "@/lib/api";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { isBackendConfigured } from "@/lib/firebase";
 
 const AuthContext = createContext(undefined);
 
@@ -22,30 +23,21 @@ export function AuthProvider({ children }) {
       .then((session) => {
         if (active) setUser(session);
       })
+      .catch(() => {
+        if (active) setUser(null);
+      })
       .finally(() => {
         if (active) setLoading(false);
       });
 
-    if (!supabase)
-      return () => {
-        active = false;
-      };
-
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session?.user) {
-        setUser(null);
-        return;
-      }
-      setUser({
-        id: session.user.id,
-        email: session.user.email ?? "",
-        fullName: session.user.user_metadata.full_name ?? "Traveler",
-      });
+    // Keeps the user in sync with Firebase (sign-in in another tab, token expiry).
+    const unsubscribe = onSessionChange((session) => {
+      if (active) setUser(session);
     });
 
     return () => {
       active = false;
-      data.subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 
@@ -53,7 +45,7 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       loading,
-      isConfigured: isSupabaseConfigured,
+      isConfigured: isBackendConfigured,
       signIn: async (email, password) => {
         await apiSignIn(email, password);
         setUser(await fetchSession());
@@ -64,15 +56,15 @@ export function AuthProvider({ children }) {
         setUser(currentSession);
         return {
           needsConfirmation: Boolean(
-            isSupabaseConfigured && !currentSession && res && "user" in res,
+            isBackendConfigured && !currentSession && res && "user" in res,
           ),
         };
       },
-      sendOtp: async (email, fullName) => {
-        await apiSendOtp(email, fullName);
+      sendOtp: async (email, fullName, mode) => {
+        await apiSendOtp(email, fullName, mode);
       },
-      verifyOtp: async (email, token, type = "signup") => {
-        await apiVerifyOtp(email, token, type);
+      verifyOtp: async (email, token, type = "signup", fullName) => {
+        await apiVerifyOtp(email, token, type, fullName);
         const currentSession = await fetchSession();
         setUser(currentSession);
       },

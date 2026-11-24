@@ -1,20 +1,24 @@
-// Supabase Edge Function: trips
-// Trip, activity and expense management for the signed-in user. See routes.ts
+// API: trips
+// Trip, activity and expense management for the signed-in user. See routes.js
 // for the endpoint list. Every handler re-verifies that the caller owns the trip;
 // user ids sent by the client are never trusted.
 
 import { serveJson } from "../_shared/handler.js";
-import { ApiError, mapDbError, ok, readJsonBody } from "../_shared/http.js";
+import { ApiError, ok, readJsonBody } from "../_shared/http.js";
 import { addDaysUtc, tripDayCount } from "../_shared/budget.js";
 import { enforceRateLimit, RATE_LIMITS } from "../_shared/rate-limit.js";
-import { authenticate } from "../_shared/supabase.js";
+import { authenticate } from "../_shared/auth.js";
 import { routesApiKeyFromEnv, travelMatrix } from "../_shared/travel-matrix.js";
 import * as actions from "../_shared/trip-actions.js";
 import {
-  TRIP_COLUMNS,
+  deleteOwnedTrip,
   getOwnedTrip,
   getTripDetails,
-  normalizeRow,
+  insertTrip,
+  listTrips as listOwnedTrips,
+  mutateTrip,
+  newId,
+  nowIso,
   recalculateTripTotal,
 } from "../_shared/trips-repo.js";
 import { parseTripInput, parseTripUpdate } from "../_shared/validation.js";
@@ -27,14 +31,7 @@ const MAX_TRIPS_LISTED = 200;
 // ---------------------------------------------------------------------------
 
 async function listTrips({ db, userId }) {
-  const { data, error } = await db
-    .from("trips")
-    .select(TRIP_COLUMNS)
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(MAX_TRIPS_LISTED);
-  if (error) throw mapDbError(error, "Loading trips");
-  return ok((data ?? []).map(normalizeRow));
+  return ok(await listOwnedTrips(db, userId, MAX_TRIPS_LISTED));
 }
 
 async function createTrip({ db, userId }, body) {
@@ -50,104 +47,88 @@ async function createTrip({ db, userId }, body) {
     });
   }
   const days = tripDayCount(input.start_date, input.end_date);
+  const id = newId();
+  const now = nowIso();
 
-  const { data: trip, error } = await db
-    .from("trips")
-    .insert({
-      user_id: userId,
-      title: rawTitle?.trim() || `${days}-day ${input.destination} trip`,
-      destination: input.destination,
-      start_date: input.start_date,
-      end_date: input.end_date,
-      budget: input.budget,
-      travelers: input.travelers,
-      interests: input.interests,
-      pace: input.pace,
-      travel_style: input.travel_style,
-      notes: input.preferences,
-      status: "draft",
-    })
-    .select(TRIP_COLUMNS)
-    .single();
-  if (error) throw mapDbError(error, "Creating the trip");
-
-  const row = normalizeRow(trip);
-  const { error: dayError } = await db.from("itinerary_days").insert(
-    Array.from({ length: days }, (_, i) => ({
-      trip_id: row.id,
+  // The trip and its days are one document, so they are created together.
+  const trip = await insertTrip({
+    id,
+    user_id: userId,
+    title: rawTitle?.trim() || `${days}-day ${input.destination} trip`,
+    destination: input.destination,
+    destination_lat: null,
+    destination_lng: null,
+    start_date: input.start_date,
+    end_date: input.end_date,
+    budget: input.budget,
+    currency: "INR",
+    travelers: input.travelers,
+    interests: input.interests ?? [],
+    pace: input.pace,
+    travel_style: input.travel_style,
+    notes: input.preferences ?? null,
+    travel_notes: null,
+    status: "draft",
+    total_estimated_cost: 0,
+    generation_count: 0,
+    generated_at: null,
+    ai_model: null,
+    created_at: now,
+    updated_at: now,
+    itinerary_days: Array.from({ length: days }, (_, i) => ({
+      id: newId(),
+      trip_id: id,
       day_number: i + 1,
       date: addDaysUtc(input.start_date, i),
       title: `Day ${i + 1}`,
       summary: "",
+      created_at: now,
+      updated_at: now,
+      activities: [],
     })),
-  );
-  if (dayError) {
-    await db.from("trips").delete().eq("id", row.id).eq("user_id", userId); // compensate: no half-created trips
-    throw mapDbError(dayError, "Creating the itinerary days");
-  }
-  return ok(await getTripDetails(db, row), 201);
+    expenses: [],
+  });
+  return ok(await getTripDetails(db, trip), 201);
 }
 
-async function updateTrip({ db, userId }, tripId, body) {
+async function updateTrip({ db }, tripId, body) {
   const patch = parseTripUpdate(body);
-  const trip = await getOwnedTrip(db, userId, tripId);
 
-  if (patch.start_date && patch.end_date) {
-    const { data: days, error } = await db
-      .from("itinerary_days")
-      .select("id, day_number")
-      .eq("trip_id", tripId);
-    if (error) throw mapDbError(error, "Loading the itinerary");
-    const newLength = tripDayCount(patch.start_date, patch.end_date);
-    const existing = days ?? [];
-    if (existing.length && newLength !== existing.length) {
-      throw new ApiError(
-        409,
-        "DATES_REQUIRE_REGENERATION",
-        `This itinerary has ${existing.length} day(s). Keep the same trip length to shift dates, ` +
-          "or regenerate the itinerary for the new dates.",
-      );
+  // Day dates and trip fields change together, or not at all.
+  const { trip } = await mutateTrip(db, tripId, (trip) => {
+    if (patch.start_date && patch.end_date) {
+      const days = trip.itinerary_days ?? [];
+      const newLength = tripDayCount(patch.start_date, patch.end_date);
+      if (days.length && newLength !== days.length) {
+        throw new ApiError(
+          409,
+          "DATES_REQUIRE_REGENERATION",
+          `This itinerary has ${days.length} day(s). Keep the same trip length to shift dates, ` +
+            "or regenerate the itinerary for the new dates.",
+        );
+      }
+      const now = nowIso();
+      for (const day of days) {
+        day.date = addDaysUtc(patch.start_date, day.day_number - 1);
+        day.updated_at = now;
+      }
     }
-    for (const day of existing) {
-      const { error: shiftError } = await db
-        .from("itinerary_days")
-        .update({ date: addDaysUtc(patch.start_date, day.day_number - 1) })
-        .eq("id", day.id)
-        .eq("trip_id", tripId);
-      if (shiftError) throw mapDbError(shiftError, "Updating itinerary dates");
-    }
-  }
+    Object.assign(trip, patch);
+  }, "Updating the trip");
 
-  const { data, error } = await db
-    .from("trips")
-    .update(patch)
-    .eq("id", tripId)
-    .eq("user_id", userId)
-    .select(TRIP_COLUMNS)
-    .single();
-  if (error) throw mapDbError(error, "Updating the trip");
-
-  // Budget or traveler count may have changed: totals are recalculated in getTripDetails.
-  return ok(await getTripDetails(db, { ...trip, ...normalizeRow(data) }));
+  // Budget or traveler count may have changed: totals are recalculated on save.
+  return ok(await getTripDetails(db, trip));
 }
 
-async function deleteTrip({ db, userId }, tripId) {
-  // Days, activities and expenses are removed by ON DELETE CASCADE in the same statement.
-  const { data, error } = await db
-    .from("trips")
-    .delete()
-    .eq("id", tripId)
-    .eq("user_id", userId)
-    .select("id");
-  if (error) throw mapDbError(error, "Deleting the trip");
-  if (!data?.length)
-    throw new ApiError(404, "TRIP_NOT_FOUND", "Trip not found.");
+async function deleteTrip({ db }, tripId) {
+  // Days, activities and expenses live in the trip document and go with it.
+  await deleteOwnedTrip(db, tripId);
   return ok({ id: tripId, deleted: true });
 }
 
 // ---------------------------------------------------------------------------
 
-serveJson(["GET", "POST", "PATCH", "DELETE"], async (req) => {
+export default serveJson(["GET", "POST", "PATCH", "DELETE"], async (req) => {
   const route = matchRoute(req.method, new URL(req.url).pathname);
   const { db, user } = await authenticate(req);
   const ctx = { db, userId: user.id };
@@ -173,7 +154,7 @@ serveJson(["GET", "POST", "PATCH", "DELETE"], async (req) => {
       return deleteTrip(ctx, route.tripId);
     case "getBudget": {
       const trip = await getOwnedTrip(db, user.id, route.tripId);
-      return ok((await recalculateTripTotal(db, trip)).budget);
+      return ok(recalculateTripTotal(db, trip).budget);
     }
     case "createActivity":
       return ok(await actions.createActivity(ctx, route.tripId, body), 201);

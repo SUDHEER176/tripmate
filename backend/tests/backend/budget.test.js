@@ -8,7 +8,7 @@ import {
   expenseLineTotal,
   tripDayCount,
   tripNightCount,
-} from "../../supabase/functions/_shared/budget.js";
+} from "../../functions/_shared/budget.js";
 
 test("line totals apply each cost basis correctly", () => {
   const travelers = 3;

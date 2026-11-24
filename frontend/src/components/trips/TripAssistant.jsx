@@ -171,7 +171,7 @@ export function TripAssistant({ trip, onTripChange }) {
                 ) : (
                   <p className="rounded-xl bg-neutral-100 p-3 text-xs text-neutral-600">
                     The assistant runs on the server, so it is not available in
-                    local demo mode. Connect Supabase to use it.
+                    local demo mode. Connect the backend to use it.
                   </p>
                 )}
               </div>
