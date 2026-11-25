@@ -34,6 +34,10 @@ import { ExpensesCard } from "@/components/trips/ExpensesCard";
 import TripMap from "@/components/trips/TripMap";
 import { TripAssistant } from "@/components/trips/TripAssistant";
 import { RouteOptimizerBar } from "@/components/trips/RouteOptimizerBar";
+import { PackingListCard } from "@/components/trips/PackingListCard";
+import { ShareTripButton } from "@/components/trips/ShareTripButton";
+import { WeatherChip, WeatherLine } from "@/components/trips/WeatherBadge";
+import { useTripWeather } from "@/lib/weather";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -116,6 +120,14 @@ export function TripDetailsPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [editingActivity, tripDraft]);
+
+  const destGuess = trip ? findDestination(trip.destination) : null;
+  const weather = useTripWeather(
+    trip?.destination_lat ?? destGuess?.lat ?? null,
+    trip?.destination_lng ?? destGuess?.lng ?? null,
+    trip?.start_date,
+    trip?.end_date,
+  );
 
   async function reloadTrip() {
     if (!id) return;
@@ -335,6 +347,12 @@ export function TripDetailsPage() {
             )}
             {regenerating ? "Regenerating…" : "Regenerate"}
           </Button>
+          <ShareTripButton
+            trip={trip}
+            onShareChange={(shareId) =>
+              setTrip((current) => ({ ...current, share_id: shareId }))
+            }
+          />
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="h-3.5 w-3.5" />
             Print
@@ -537,6 +555,10 @@ export function TripDetailsPage() {
                     month: "short",
                   })}
                 </span>
+                <WeatherChip
+                  day={weather?.[day.date]}
+                  className={cn("mt-1", active ? "text-white/80" : "text-neutral-500")}
+                />
               </button>
             );
           })}
@@ -563,6 +585,7 @@ export function TripDetailsPage() {
                     {currentDay.summary}
                   </p>
                 )}
+                <WeatherLine day={weather?.[currentDay.date]} />
               </div>
 
               <div className="flex shrink-0 items-center gap-3">
@@ -751,6 +774,12 @@ export function TripDetailsPage() {
       </section>
 
       <TripAssistant trip={trip} onTripChange={setTrip} />
+
+      <PackingListCard
+        tripId={trip.id}
+        items={trip.packing_list}
+        weather={weather}
+      />
 
       <ExpensesCard
         expenses={trip.expenses}

@@ -10,7 +10,7 @@
 // Ownership: the Admin SDK bypasses Security Rules, so loadOwned() is the one
 // place that checks `user_id`. Every read and write goes through it.
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { db } from "./firebase.js";
 import { ApiError } from "./http.js";
 import { activityExpenseCategory, calculateBudget } from "./budget.js";
@@ -22,7 +22,7 @@ export const TRIP_FIELDS = [
   "id", "user_id", "title", "destination", "destination_lat", "destination_lng",
   "start_date", "end_date", "budget", "currency", "travelers", "interests", "pace",
   "travel_style", "notes", "travel_notes", "status", "total_estimated_cost",
-  "generation_count", "generated_at", "ai_model", "created_at", "updated_at",
+  "generation_count", "generated_at", "ai_model", "share_id", "created_at", "updated_at",
 ];
 
 export const DAY_FIELDS = [
@@ -203,6 +203,68 @@ export async function getTripDetails(_db, trip) {
       })),
     expenses,
     budget_summary: budget,
+    packing_list: trip.packing_list ?? [],
+    disclaimer: ESTIMATE_DISCLAIMER,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public share links
+// ---------------------------------------------------------------------------
+
+/** 128 random bits, URL-safe. Hard to guess, so the link itself is the key. */
+export function newShareId() {
+  return randomBytes(16).toString("base64url");
+}
+
+/** Finds the trip a share link points at, or throws 404. */
+export async function getSharedTrip(shareId) {
+  let snapshot;
+  try {
+    snapshot = await tripsCollection().where("share_id", "==", shareId).limit(1).get();
+  } catch (err) {
+    throw unexpected(err, "Loading the shared trip");
+  }
+  if (snapshot.empty) {
+    throw new ApiError(404, "SHARE_NOT_FOUND", "This share link is invalid or has been turned off.");
+  }
+  return snapshot.docs[0].data();
+}
+
+const PUBLIC_ACTIVITY_FIELDS = ACTIVITY_FIELDS.filter((f) => f !== "notes");
+
+/**
+ * The read-only view of a trip for anyone with its share link. Leaves out the
+ * owner, private notes, the expense list and the packing list.
+ */
+export function publicTripView(trip) {
+  const { budget } = summarizeTrip(trip);
+  return {
+    title: trip.title,
+    destination: trip.destination,
+    destination_lat: trip.destination_lat ?? null,
+    destination_lng: trip.destination_lng ?? null,
+    start_date: trip.start_date,
+    end_date: trip.end_date,
+    travelers: trip.travelers,
+    interests: trip.interests ?? [],
+    pace: trip.pace,
+    travel_style: trip.travel_style ?? null,
+    travel_notes: trip.travel_notes ?? null,
+    estimated_total: budget.estimated_total,
+    cost_per_traveler: budget.cost_per_traveler,
+    currency: "INR",
+    itinerary_days: [...(trip.itinerary_days ?? [])]
+      .sort((a, b) => a.day_number - b.day_number)
+      .map((day) => ({
+        day_number: day.day_number,
+        date: day.date,
+        title: day.title,
+        summary: day.summary,
+        activities: [...(day.activities ?? [])]
+          .sort(byOrder)
+          .map((activity) => pick(activity, PUBLIC_ACTIVITY_FIELDS)),
+      })),
     disclaimer: ESTIMATE_DISCLAIMER,
   };
 }

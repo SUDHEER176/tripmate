@@ -14,6 +14,10 @@
 //   PATCH  /trips/:id/expenses/:expenseId       update an expense
 //   DELETE /trips/:id/expenses/:expenseId       delete an expense
 //   POST   /trips/:id/optimize-route            reorder a day's stops for the least travel time
+//   POST   /trips/:id/share                     turn on the public read-only link
+//   DELETE /trips/:id/share                     turn it off (the old link stops working)
+//   PATCH  /trips/:id/packing-list              replace the packing list { items }
+//   POST   /trips/:id/packing-list/generate     build a packing list with AI (replaces it)
 
 import { ApiError } from "../_shared/http.js";
 import { isUuid } from "../_shared/validation.js";
@@ -71,6 +75,20 @@ export function matchRoute(method, pathname) {
 
   if (resource === "optimize-route" && childSeg === undefined) {
     return pick(method, { POST: { name: "optimizeRoute", tripId } });
+  }
+
+  if (resource === "share" && childSeg === undefined) {
+    return pick(method, {
+      POST: { name: "shareTrip", tripId },
+      DELETE: { name: "unshareTrip", tripId },
+    });
+  }
+
+  if (resource === "packing-list") {
+    if (childSeg === undefined)
+      return pick(method, { PATCH: { name: "updatePackingList", tripId } });
+    if (childSeg === "generate")
+      return pick(method, { POST: { name: "generatePackingList", tripId } });
   }
 
   if (resource === "activities") {

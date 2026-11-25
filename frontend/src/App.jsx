@@ -11,6 +11,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { MyTripsPage } from "@/pages/MyTripsPage";
 import { PlanTripPage } from "@/pages/PlanTripPage";
 import { PricingPage } from "@/pages/PricingPage";
+import { SharedTripPage } from "@/pages/SharedTripPage";
 import { SignupPage } from "@/pages/SignupPage";
 import { TripDetailsPage } from "@/pages/TripDetailsPage";
 
@@ -27,6 +28,7 @@ export default function App() {
             {/* Public Pages with Horizontal Navbar */}
             <Route element={<PublicLayout />}>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/shared/:shareId" element={<SharedTripPage />} />
             </Route>
 
             {/* Shared Pages: dashboard sidebar when signed in, public navbar otherwise */}

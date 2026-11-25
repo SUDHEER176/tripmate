@@ -4,7 +4,15 @@
 // user ids sent by the client are never trusted.
 
 import { serveJson } from "../_shared/handler.js";
-import { ApiError, ok, readJsonBody } from "../_shared/http.js";
+import { ApiError, logError, ok, readJsonBody } from "../_shared/http.js";
+import { callChatCompletions, llmConfigFromEnv } from "../_shared/llm.js";
+import {
+  basePackingList,
+  buildPackingPrompt,
+  normalizeAiPacking,
+  parsePackingList,
+  parseWeatherHint,
+} from "../_shared/packing.js";
 import { addDaysUtc, tripDayCount } from "../_shared/budget.js";
 import { enforceRateLimit, RATE_LIMITS } from "../_shared/rate-limit.js";
 import { authenticate } from "../_shared/auth.js";
@@ -18,6 +26,7 @@ import {
   listTrips as listOwnedTrips,
   mutateTrip,
   newId,
+  newShareId,
   nowIso,
   recalculateTripTotal,
 } from "../_shared/trips-repo.js";
@@ -127,8 +136,77 @@ async function deleteTrip({ db }, tripId) {
 }
 
 // ---------------------------------------------------------------------------
+// Share link and packing list
+// ---------------------------------------------------------------------------
 
-export default serveJson(["GET", "POST", "PATCH", "DELETE"], async (req) => {
+async function shareTrip({ db }, tripId) {
+  const { trip } = await mutateTrip(db, tripId, (trip) => {
+    trip.share_id ??= newShareId();
+  }, "Sharing the trip");
+  return ok({ share_id: trip.share_id });
+}
+
+async function unshareTrip({ db }, tripId) {
+  await mutateTrip(db, tripId, (trip) => {
+    trip.share_id = null;
+  }, "Turning off sharing");
+  return ok({ share_id: null });
+}
+
+async function updatePackingList({ db }, tripId, body) {
+  const items = parsePackingList(body);
+  const { trip } = await mutateTrip(db, tripId, (trip) => {
+    trip.packing_list = items;
+  }, "Saving the packing list");
+  return ok({ packing_list: trip.packing_list });
+}
+
+/** Asks the AI for a list; falls back to the rule-based list if AI is unavailable. */
+async function aiPackingList(trip, weather, requestId) {
+  let config;
+  try {
+    config = llmConfigFromEnv();
+  } catch {
+    return { items: basePackingList(trip, weather), source: "rules" };
+  }
+  try {
+    const prompt = buildPackingPrompt(trip, weather);
+    const choice = await callChatCompletions(
+      { ...config, timeoutMs: Math.min(config.timeoutMs, 40_000), maxTokens: 2000 },
+      {
+        messages: [
+          { role: "system", content: prompt.system },
+          { role: "user", content: prompt.user },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.4,
+      },
+    );
+    const text = String(choice.message?.content ?? "")
+      .trim()
+      .replace(/^```(?:json)?\s*|\s*```$/gi, "");
+    const items = normalizeAiPacking(JSON.parse(text));
+    if (items.length >= 5) return { items, source: "ai" };
+  } catch (err) {
+    logError(requestId, "PACKING_AI_FALLBACK", err?.message ?? "unknown");
+  }
+  return { items: basePackingList(trip, weather), source: "rules" };
+}
+
+async function generatePackingList({ db, userId }, tripId, body, requestId) {
+  const weather = parseWeatherHint(body?.weather);
+  const current = await getOwnedTrip(db, userId, tripId);
+  await enforceRateLimit(db, RATE_LIMITS.assistantPerHour);
+  const { items, source } = await aiPackingList(current, weather, requestId);
+  const { trip } = await mutateTrip(db, tripId, (trip) => {
+    trip.packing_list = items;
+  }, "Saving the packing list");
+  return ok({ packing_list: trip.packing_list, source });
+}
+
+// ---------------------------------------------------------------------------
+
+export default serveJson(["GET", "POST", "PATCH", "DELETE"], async (req, { requestId }) => {
   const route = matchRoute(req.method, new URL(req.url).pathname);
   const { db, user } = await authenticate(req);
   const ctx = { db, userId: user.id };
@@ -178,6 +256,14 @@ export default serveJson(["GET", "POST", "PATCH", "DELETE"], async (req) => {
       return ok(
         await actions.deleteExpense(ctx, route.tripId, route.expenseId),
       );
+    case "shareTrip":
+      return shareTrip(ctx, route.tripId);
+    case "unshareTrip":
+      return unshareTrip(ctx, route.tripId);
+    case "updatePackingList":
+      return updatePackingList(ctx, route.tripId, body);
+    case "generatePackingList":
+      return generatePackingList(ctx, route.tripId, body, requestId);
     case "optimizeRoute": {
       await enforceRateLimit(db, RATE_LIMITS.routesPerHour);
       const apiKey = routesApiKeyFromEnv();

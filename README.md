@@ -33,6 +33,9 @@
 | **Budget planner** | Tracks costs in INR across accommodation, dining, transport and excursions, and warns you when you go over budget. |
 | **Interactive map** | Numbered pins for each day's stops, joined by a route line. |
 | **Save and manage trips** | Create, view, edit and delete trips and their stops. |
+| **Share link** | Turn on a public, read-only link to a trip and send it on WhatsApp. Notes, expenses and the packing list stay private. Turn it off any time. |
+| **Weather** | Forecast for each trip day (Open-Meteo, free, no key). Days more than 16 days ahead show last year's weather as a guide. |
+| **Packing list** | AI writes a checklist from the destination, dates, weather and activities. Tick items off, add your own. |
 | **Works with or without an account** | Uses Firebase (cloud storage, with login) when configured, or runs as a local demo in your browser when it isn't. |
 | **Modern, responsive design** | Tailwind CSS, custom design tokens, Fraunces and Outfit fonts, glassmorphic micro-interactions. |
 
@@ -234,10 +237,11 @@ Without a Routes API key it falls back to a distance-based estimate.
 
 All functions return either `{ "data": ... }` or `{ "error": { "code", "message", "details"? } }`.
 
-All endpoints are under `/api` and need `Authorization: Bearer <Firebase ID token>`, except the email-code endpoints:
+All endpoints are under `/api` and need `Authorization: Bearer <Firebase ID token>`, except the email-code endpoints and shared trips:
 
 - `POST /api/auth-codes/send` `{ email, purpose: "sign-in" | "verify" }` emails a 6-digit code.
 - `POST /api/auth-codes/verify` `{ email, code, purpose, name? }` returns `{ token }`, a Firebase custom token for `signInWithCustomToken`.
+- `GET /api/shared/:shareId` returns the read-only view of a shared trip (404 once sharing is turned off).
 
 ### `generate-itinerary`
 
@@ -262,6 +266,9 @@ To regenerate an existing trip, send `{ trip_id, confirm_regenerate: true }`.
 | `POST` | `/trips/:id/expenses` | Add an expense |
 | `PATCH` / `DELETE` | `/trips/:id/expenses/:expenseId` | Update or delete an expense |
 | `POST` | `/trips/:id/optimize-route` | Optimize a day's route. Body: `{ itinerary_day_id, apply? }` (omit `apply` for a preview) |
+| `POST` / `DELETE` | `/trips/:id/share` | Turn the public link on (returns `{ share_id }`) or off |
+| `PATCH` | `/trips/:id/packing-list` | Replace the packing list. Body: `{ items: [{ id?, text, category, packed }] }` |
+| `POST` | `/trips/:id/packing-list/generate` | Create a packing list with AI (falls back to rules). Body: `{ weather?: { min_temp, max_temp, rainy_days } }` |
 
 ---
 
@@ -337,5 +344,6 @@ Without the secret and project id, the deploy job is skipped with a notice; chec
 | Login | `/login` | No | Sign in with email or a one-click demo account |
 | Signup | `/signup` | No | Create an account |
 | Plan a trip | `/plan-trip` | Yes | Enter destination, dates, budget and preferences |
-| Trip details | `/trips/:id` | Yes | Day-by-day plan, edit stops, map and budget |
+| Trip details | `/trips/:id` | Yes | Day-by-day plan, edit stops, map, budget, weather and packing list |
+| Shared trip | `/shared/:shareId` | No | Read-only itinerary from a share link |
 | My trips | `/my-trips` | Yes | Manage all saved trips |

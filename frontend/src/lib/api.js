@@ -13,6 +13,7 @@ import {
 } from "firebase/auth";
 import { auth } from "./firebase";
 import { activityExpenseCategory, calculateBudget } from "./budget";
+import { basePackingList, parsePackingList } from "./packing";
 import {
   chooseTravelMode,
   estimateMatrix,
@@ -746,6 +747,81 @@ export async function deleteExpense(tripId, expenseId) {
     ...trip,
     expenses: (trip.expenses ?? []).filter((item) => item.id !== expenseId),
   }));
+}
+
+// ---- Share link ----------------------------------------------------------------
+
+/** Whether trips can be shared publicly (needs the server; demo trips live in this browser only). */
+export const sharingAvailable = Boolean(auth);
+
+export function shareUrl(shareId) {
+  return `${window.location.origin}/shared/${shareId}`;
+}
+
+/** Turns on the public read-only link and returns its share id. */
+export async function shareTrip(tripId) {
+  if (!auth) {
+    throw new ApiRequestError(
+      "Sharing needs an account. Demo trips are stored only in this browser.",
+      0,
+      "DEMO_MODE",
+    );
+  }
+  const result = await request(`trips/${tripId}/share`, { body: {} });
+  return result.share_id;
+}
+
+/** Turns the link off; anyone who has it will see "link turned off". */
+export async function unshareTrip(tripId) {
+  if (!auth) return;
+  await request(`trips/${tripId}/share`, { method: "DELETE" });
+}
+
+/** Loads a shared trip by its link (no sign-in). Returns null if the link is off. */
+export async function getSharedTrip(shareId) {
+  let response;
+  try {
+    response = await fetch(`/api/shared/${encodeURIComponent(shareId)}`);
+  } catch {
+    throw await toApiError(null);
+  }
+  if (response.status === 404) return null;
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()).data;
+}
+
+// ---- Packing list --------------------------------------------------------------
+
+/** Saves the whole packing list (after a tick, add or delete). Returns the saved list. */
+export async function savePackingList(tripId, items) {
+  if (auth) {
+    const result = await request(`trips/${tripId}/packing-list`, {
+      method: "PATCH",
+      body: { items },
+    });
+    return result.packing_list;
+  }
+  const clean = parsePackingList({ items });
+  updateLocalTrip(tripId, (trip) => ({ ...trip, packing_list: clean }));
+  return clean;
+}
+
+/**
+ * Builds a new packing list (AI on the server, rules in demo mode) and saves it,
+ * replacing the current one. `weather` is an optional { min_temp, max_temp, rainy_days }.
+ */
+export async function generatePackingList(tripId, weather) {
+  if (auth) {
+    const result = await request(`trips/${tripId}/packing-list/generate`, {
+      body: { weather: weather ?? null },
+    });
+    return result.packing_list;
+  }
+  const trip = readTrips().find((item) => item.id === tripId);
+  if (!trip) throw new ApiRequestError("Trip not found.", 404, "TRIP_NOT_FOUND");
+  const items = basePackingList(trip, weather);
+  updateLocalTrip(tripId, (current) => ({ ...current, packing_list: items }));
+  return items;
 }
 
 // ---- AI assistant ------------------------------------------------------------

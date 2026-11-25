@@ -5,6 +5,7 @@
 //   POST /api/generate-itinerary
 //   POST /api/trip-assistant
 //   *    /api/trips/...
+//   GET  /api/shared/:shareId            public read-only trip (no sign-in)
 //   GET  /health
 
 import { Readable } from "node:stream";
@@ -12,12 +13,14 @@ import authCodes from "./functions/auth-codes/index.js";
 import generateItinerary from "./functions/generate-itinerary/index.js";
 import tripAssistant from "./functions/trip-assistant/index.js";
 import trips from "./functions/trips/index.js";
+import shared from "./functions/shared/index.js";
 
 const handlers = new Map([
   ["auth-codes", authCodes],
   ["generate-itinerary", generateItinerary],
   ["trip-assistant", tripAssistant],
   ["trips", trips],
+  ["shared", shared],
 ]);
 
 function json(res, status, body) {
