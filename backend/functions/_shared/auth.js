@@ -21,7 +21,17 @@ export async function authenticate(req) {
   let decoded;
   try {
     decoded = await auth().verifyIdToken(token, true);
-  } catch {
+  } catch (err) {
+    // The reason (expired, revoked, wrong project, bad server credentials) goes
+    // to the logs only; the token itself is never logged.
+    console.error(
+      JSON.stringify({
+        level: "error",
+        code: "AUTH_VERIFY_FAILED",
+        reason: err?.code ?? err?.name ?? "unknown",
+        message: String(err?.message ?? "").slice(0, 200),
+      }),
+    );
     throw new ApiError(
       401,
       "AUTH_INVALID",
